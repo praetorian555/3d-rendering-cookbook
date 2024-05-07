@@ -1,0 +1,10 @@
+function(setup_sanitizers project_options)
+    if (CMAKE_SYSTEM_NAME MATCHES "Windows" AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(STATUS "Address sanitizer disabled for Clang on Windows!")
+        return()
+    endif ()
+
+    target_compile_options(${project_options} INTERFACE /fsanitize=address /Zi /INCREMENTAL:NO)
+    target_compile_definitions(${project_options} INTERFACE _DISABLE_VECTOR_ANNOTATION _DISABLE_STRING_ANNOTATION)
+    target_link_options(${project_options} INTERFACE /INCREMENTAL:NO)
+endfunction()

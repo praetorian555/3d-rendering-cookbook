@@ -1,0 +1,56 @@
+Checks: '-*,
+         clang-analyzer-*,
+         concurrency-*,
+         cppcoreguidelines-*,
+         -cppcoreguidelines-pro-type-union-access,
+         -cppcoreguidelines-pro-bounds-constant-array-index,
+         -cppcoreguidelines-pro-type-member-init,
+         -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+         -cppcoreguidelines-pro-type-vararg,
+         -cppcoreguidelines-owning-memory,
+         -cppcoreguidelines-avoid-non-const-global-variables,
+         -cppcoreguidelines-pro-type-reinterpret-cast,
+         -cppcoreguidelines-macro-usage,
+         -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+         -cppcoreguidelines-non-private-member-variables-in-classes,
+         -cppcoreguidelines-avoid-magic-numbers,
+         -cppcoreguidelines-avoid-do-while,
+         -cppcoreguidelines-avoid-goto,
+         -cppcoreguidelines-special-member-functions,
+         modernize-*,
+         -modernize-use-trailing-return-type,
+         -modernize-avoid-bind,
+         -modernize-use-auto,
+         -modernize-macro-to-enum,
+         performance-*,
+         readability-*,
+         -readability-identifier-length,
+         -readability-uppercase-literal-suffix,
+         -readability-function-cognitive-complexity,
+         -readability-redundant-preprocessor,
+         -readability-magic-numbers,
+         misc-*,
+         -misc-non-private-member-variables-in-classes,
+         -misc-include-cleaner,
+         google-*'
+HeaderFilterRegex: 'rndr/.*\.h'
+CheckOptions:
+    readability-identifier-naming.LocalVariableCase: 'lower_case'
+    readability-identifier-naming.PrivateMemberCase: 'lower_case'
+    readability-identifier-naming.PrivateMemberPrefix: 'm_'
+    readability-identifier-naming.ProtectedMemberCase: 'lower_case'
+    readability-identifier-naming.ProtectedMemberPrefix: 'm_'
+    readability-identifier-naming.PublicMemberCase: 'lower_case'
+    readability-identifier-naming.ConstexprVariableCase: 'lower_case'
+    readability-identifier-naming.ConstexprVariablePrefix: 'k_'
+    readability-identifier-naming.StaticVariableCase: 'lower_case'
+    readability-identifier-naming.StaticVariablePrefix: 's_'
+    readability-identifier-naming.GlobalVariableCase: 'lower_case'
+    readability-identifier-naming.GlobalVariablePrefix: 'g_'
+    readability-identifier-naming.ParameterCase: "lower_case"
+    readability-identifier-naming.PointerParameterCase: "lower_case"
+    readability-identifier-naming.NamespaceCase: 'CamelCase'
+    readability-identifier-naming.ClassCase: 'CamelCase'
+    readability-identifier-naming.ClassMethodCase: 'CamelCase'
+    readability-identifier-naming.StructCase: 'CamelCase'
+    readability-inconsistent-declaration-parameter-name.Strict: true
