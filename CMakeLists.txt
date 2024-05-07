@@ -37,3 +37,7 @@ target_include_directories(shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
 add_executable(01-triangle chapters/01-triangle/triangle.cpp)
 target_link_libraries(01-triangle PRIVATE shared)
 target_link_libraries(01-triangle PRIVATE rencook_options rencook_warnings)
+
+add_executable(02-cube chapters/02-cube/cube.cpp)
+target_link_libraries(02-cube PRIVATE shared)
+target_link_libraries(02-cube PRIVATE rencook_options rencook_warnings)
