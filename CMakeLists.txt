@@ -80,3 +80,7 @@ target_link_libraries(01-triangle PRIVATE rencook_options rencook_warnings)
 add_executable(02-cube chapters/02-cube/cube.cpp)
 target_link_libraries(02-cube PRIVATE shared)
 target_link_libraries(02-cube PRIVATE rencook_options rencook_warnings)
+
+add_executable(03-image chapters/03-image/image.cpp)
+target_link_libraries(03-image PRIVATE shared)
+target_link_libraries(03-image PRIVATE rencook_options rencook_warnings)
