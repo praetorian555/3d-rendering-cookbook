@@ -1,6 +1,8 @@
 //
 #version 460 core
 
+#include "srgb.glsl"
+
 layout(std140, binding = 0) uniform PerFrameData
 {
     mat4 model;
@@ -35,8 +37,12 @@ void main()
     const float Rtheta = R0 + (1.0 - R0) * pow((1.0 - dot(-v, n)), 5.0);
 
     vec4 color = texture(texture0, vtx.uv);
+    color = SrgbToLinear(color, 2.2);
     vec4 colorRefl = texture(texture1, reflection);
+    colorRefl = SrgbToLinear(colorRefl, 2.2);
     vec4 colorRefr = texture(texture1, refraction);
+    colorRefr = SrgbToLinear(colorRefr, 2.2);
     color = color * mix(colorRefl, colorRefr, Rtheta);
+    color = LinearToSrgb(color, 2.2);
     out_FragColor = color;
 }

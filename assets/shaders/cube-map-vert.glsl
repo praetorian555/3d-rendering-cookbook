@@ -1,7 +1,7 @@
 //
 #version 460 core
 
-#include "cube-map-common.h"
+#include "cube-map-common.glsl"
 
 layout (location=0) out vec3 dir;
 
