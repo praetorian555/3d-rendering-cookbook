@@ -78,7 +78,6 @@ file(GLOB_RECURSE ETC2COMP_SOURCES CONFIGURE_DEPENDS
         ${ETC2COMP_SOURCE_PATH}/EtcLib/EtcCodec/*.h
         ${ETC2COMP_SOURCE_PATH}/EtcLib/Etc/*.cpp
         ${ETC2COMP_SOURCE_PATH}/EtcLib/EtcCodec/*.cpp)
-message(STATUS "ETC2COMP_SOURCES: ${ETC2COMP_SOURCES}")
 add_library(etc2comp ${ETC2COMP_SOURCES}
         ${ETC2COMP_SOURCE_PATH}/EtcTool/EtcFile.h
         ${ETC2COMP_SOURCE_PATH}/EtcTool/EtcFile.cpp
@@ -90,10 +89,36 @@ target_include_directories(etc2comp PUBLIC ${ETC2COMP_SOURCE_PATH}/EtcLib/Etc
         ${ETC2COMP_SOURCE_PATH}/EtcTool)
 target_compile_options(etc2comp PRIVATE /W1)
 
+# Setup ASSIMP ######################################################################
+include(cmake/cpm.cmake)
+cpmaddpackage(
+        NAME
+        assimp
+        GITHUB_REPOSITORY
+        "assimp/assimp"
+        VERSION
+        5.3.1
+        OPTIONS
+        "BUILD_SHARED_LIBS OFF"
+        "ASSIMP_BUILD_ASSIMP_TOOLS OFF"
+        "ASSIMP_BUILD_TESTS OFF"
+        "ASSIMP_NO_EXPORT ON"
+        "ASSIMP_INSTALL_PDB OFF"
+        "ASSIMP_BUILD_ZLIB ON"
+        "ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF"
+        "ASSIMP_BUILD_OBJ_IMPORTER ON"
+        "ASSIMP_BUILD_FBX_IMPORTER ON"
+        "ASSIMP_BUILD_GLTF_IMPORTER ON"
+        "ASSIMP_BUILD_COLLADA_IMPORTER ON"
+)
+SET_TARGET_PROPERTIES(assimp PROPERTIES FOLDER Extern)
+SET_TARGET_PROPERTIES(zlibstatic PROPERTIES FOLDER Extern)
+SET_TARGET_PROPERTIES(UpdateAssimpLibsDebugSymbolsAndDLLs PROPERTIES FOLDER Extern)
+
 set(SHARED_FILES shared/types.h shared/imgui-wrapper.cpp shared/imgui-wrapper.h)
-add_library(shared ${SHARED_FILES})
+add_library(shared STATIC ${SHARED_FILES})
 target_link_libraries(shared PRIVATE rencook_options rencook_warnings)
-target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp)
+target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp assimp)
 target_include_directories(shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
 target_compile_definitions(shared PUBLIC -DASSETS_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets/")
 
@@ -108,3 +133,8 @@ target_link_libraries(02-cube PRIVATE rencook_options rencook_warnings)
 add_executable(03-image chapters/03-image/image.cpp)
 target_link_libraries(03-image PRIVATE shared)
 target_link_libraries(03-image PRIVATE rencook_options rencook_warnings)
+
+add_executable(04-assimp chapters/04-assimp/assimp.cpp)
+target_link_libraries(04-assimp PRIVATE shared)
+target_link_libraries(04-assimp PRIVATE rencook_options rencook_warnings)
+
