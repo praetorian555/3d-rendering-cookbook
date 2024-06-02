@@ -155,3 +155,6 @@ add_executable(05-mesh-optimizer chapters/05-mesh-optimizer/mesh-optimizer.cpp)
 target_link_libraries(05-mesh-optimizer PRIVATE shared)
 target_link_libraries(05-mesh-optimizer PRIVATE rencook_options rencook_warnings)
 
+add_executable(06-vertex-pulling chapters/06-vertex-pulling/vertex-pulling.cpp)
+target_link_libraries(06-vertex-pulling PRIVATE shared)
+target_link_libraries(06-vertex-pulling PRIVATE rencook_options rencook_warnings)
