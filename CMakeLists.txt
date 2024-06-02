@@ -115,10 +115,23 @@ SET_TARGET_PROPERTIES(assimp PROPERTIES FOLDER Extern)
 SET_TARGET_PROPERTIES(zlibstatic PROPERTIES FOLDER Extern)
 SET_TARGET_PROPERTIES(UpdateAssimpLibsDebugSymbolsAndDLLs PROPERTIES FOLDER Extern)
 
+# Setup MESHOPTIMIZER ######################################################################
+cpmaddpackage(
+        NAME
+        meshoptimizer
+        GITHUB_REPOSITORY
+        "zeux/meshoptimizer"
+        GIT_TAG
+        "v0.20"
+        OPTIONS
+        "MESHOPT_WERROR ON"
+)
+SET_TARGET_PROPERTIES(meshoptimizer PROPERTIES FOLDER Extern)
+
 set(SHARED_FILES shared/types.h shared/imgui-wrapper.cpp shared/imgui-wrapper.h)
 add_library(shared STATIC ${SHARED_FILES})
 target_link_libraries(shared PRIVATE rencook_options rencook_warnings)
-target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp assimp)
+target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp assimp meshoptimizer)
 target_include_directories(shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
 target_compile_definitions(shared PUBLIC -DASSETS_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets/")
 
@@ -137,4 +150,8 @@ target_link_libraries(03-image PRIVATE rencook_options rencook_warnings)
 add_executable(04-assimp chapters/04-assimp/assimp.cpp)
 target_link_libraries(04-assimp PRIVATE shared)
 target_link_libraries(04-assimp PRIVATE rencook_options rencook_warnings)
+
+add_executable(05-mesh-optimizer chapters/05-mesh-optimizer/mesh-optimizer.cpp)
+target_link_libraries(05-mesh-optimizer PRIVATE shared)
+target_link_libraries(05-mesh-optimizer PRIVATE rencook_options rencook_warnings)
 
