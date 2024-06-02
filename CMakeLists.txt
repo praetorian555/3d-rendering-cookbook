@@ -28,6 +28,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(rndr)
 
+# Setup IMGUI ######################################################################
 FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/ocornut/imgui
@@ -55,21 +56,44 @@ if (MSVC)
 else ()
     set(IMGUI_WINDOWS_SOURCE_FILES)
 endif ()
-
 set(IMGUI_OPENGL_SOURCE_FILES
         ${SOURCE_PATH}/backends/imgui_impl_opengl3.cpp
         ${SOURCE_PATH}/backends/imgui_impl_opengl3.h)
-
 add_library(imgui
         ${IMGUI_SOURCE_FILES}
         ${IMGUI_WINDOWS_SOURCE_FILES}
         ${IMGUI_OPENGL_SOURCE_FILES})
 target_include_directories(imgui PUBLIC ${SOURCE_PATH})
 
+# Setup ETC2COMP ######################################################################
+FetchContent_Declare(
+        etc2comp
+        GIT_REPOSITORY https://github.com/google/etc2comp
+        GIT_TAG 39422c1aa2f4889d636db5790af1d0be6ff3a226
+)
+FetchContent_Populate(etc2comp)
+FetchContent_GetProperties(etc2comp SOURCE_DIR ETC2COMP_SOURCE_PATH)
+file(GLOB_RECURSE ETC2COMP_SOURCES CONFIGURE_DEPENDS
+        ${ETC2COMP_SOURCE_PATH}/EtcLib/Etc/*.h
+        ${ETC2COMP_SOURCE_PATH}/EtcLib/EtcCodec/*.h
+        ${ETC2COMP_SOURCE_PATH}/EtcLib/Etc/*.cpp
+        ${ETC2COMP_SOURCE_PATH}/EtcLib/EtcCodec/*.cpp)
+message(STATUS "ETC2COMP_SOURCES: ${ETC2COMP_SOURCES}")
+add_library(etc2comp ${ETC2COMP_SOURCES}
+        ${ETC2COMP_SOURCE_PATH}/EtcTool/EtcFile.h
+        ${ETC2COMP_SOURCE_PATH}/EtcTool/EtcFile.cpp
+        ${ETC2COMP_SOURCE_PATH}/EtcTool/EtcFileHeader.h
+        ${ETC2COMP_SOURCE_PATH}/EtcTool/EtcFileHeader.cpp)
+target_include_directories(etc2comp PUBLIC ${ETC2COMP_SOURCE_PATH})
+target_include_directories(etc2comp PUBLIC ${ETC2COMP_SOURCE_PATH}/EtcLib/Etc
+        ${ETC2COMP_SOURCE_PATH}/EtcLib/EtcCodec
+        ${ETC2COMP_SOURCE_PATH}/EtcTool)
+target_compile_options(etc2comp PRIVATE /W1)
+
 set(SHARED_FILES shared/types.h shared/imgui-wrapper.cpp shared/imgui-wrapper.h)
 add_library(shared ${SHARED_FILES})
 target_link_libraries(shared PRIVATE rencook_options rencook_warnings)
-target_link_libraries(shared PUBLIC rndr math opal imgui)
+target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp)
 target_include_directories(shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
 target_compile_definitions(shared PUBLIC -DASSETS_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets/")
 

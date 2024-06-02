@@ -2,11 +2,9 @@
 
 #include <thread>
 
-#if RNDR_ETC2COMP
 #include "EtcLib/Etc/Etc.h"
 #include "EtcLib/Etc/EtcImage.h"
 #include "EtcTool/EtcFile.h"
-#endif
 
 #include "imgui-wrapper.h"
 #include "types.h"
@@ -128,8 +126,7 @@ void Run()
         RNDR_UNUSED(is_read);
         Rndr::File::SaveImage(image_to_save, "screenshot.png");
 
-#if RNDR_ETC2COMP
-        Rndr::Array<f32> image_to_save_float(image_to_save.GetSize2D());
+        Opal::Array<f32> image_to_save_float(image_to_save.GetSize2D());
         for (size_t i = 0; i < image_to_save.GetSize2D(); ++i)
         {
             image_to_save_float[i] = static_cast<f32>(image_to_save.GetData()[i]) / 255.0f;
@@ -137,14 +134,13 @@ void Run()
 
         const Etc::Image::Format etc_format = Etc::Image::Format::RGB8;
         const auto error_metric = Etc::ErrorMetric::BT709;
-        Etc::Image image(image_to_save_float.data(), image_to_save.GetWidth(), image_to_save.GetHeight(), error_metric);
+        Etc::Image image(image_to_save_float.GetData(), image_to_save.GetWidth(), image_to_save.GetHeight(), error_metric);
 
         image.Encode(etc_format, error_metric, ETCCOMP_DEFAULT_EFFORT_LEVEL, std::thread::hardware_concurrency(), 1024);
 
         Etc::File etc_file("screenshot.ktx", Etc::File::Format::KTX, etc_format, image.GetEncodingBits(), image.GetEncodingBitsBytes(),
                            image.GetSourceWidth(), image.GetSourceHeight(), image.GetExtendedWidth(), image.GetExtendedHeight());
         etc_file.Write();
-#endif
     };
     screenshot_action_data.native_window = window.GetNativeWindowHandle();
     input_ctx.AddAction(screenshot_action, screenshot_action_data);
