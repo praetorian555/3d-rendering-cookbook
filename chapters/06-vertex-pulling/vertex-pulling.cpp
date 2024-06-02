@@ -55,9 +55,9 @@ void Run()
     RNDR_ASSERT(swap_chain.IsValid());
 
     // Read shaders from files.
-    const Rndr::String vertex_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "vertex-pulling-vert.glsl");
-    const Rndr::String pixel_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "vertex-pulling-frag.glsl");
-    const Rndr::String geometry_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "vertex-pulling-geom.glsl");
+    const Rndr::String vertex_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "shaders/vertex-pulling-vert.glsl");
+    const Rndr::String pixel_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "shaders/vertex-pulling-frag.glsl");
+    const Rndr::String geometry_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "shaders/vertex-pulling-geom.glsl");
 
     // Create shaders.
     Rndr::Shader vertex_shader(graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_code});
