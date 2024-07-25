@@ -5,6 +5,8 @@
 #include <assimp/scene.h>
 #include <assimp/version.h>
 
+#include "types.h"
+
 void Run();
 
 /**
@@ -22,7 +24,7 @@ int main()
     Rndr::Destroy();
 }
 
-const char* const g_shader_code_vertex = R"(
+const c8 g_shader_code_vertex[] = u8R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -38,7 +40,7 @@ void main()
 }
 )";
 
-const char* const g_shader_code_fragment = R"(
+const c8 g_shader_code_fragment[] = u8R"(
 #version 460 core
 layout (location=0) in vec3 color;
 layout (location=0) out vec4 out_FragColor;
@@ -57,8 +59,8 @@ constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
 void Run()
 {
-    const Rndr::String file_path = ASSETS_ROOT "duck.gltf";
-    const aiScene* scene = aiImportFile(file_path.c_str(), aiProcess_Triangulate);
+    const char* file_path = ASSETS_ROOT "duck.gltf";
+    const aiScene* scene = aiImportFile(file_path, aiProcess_Triangulate);
     if (scene == nullptr || !scene->HasMeshes())
     {
         RNDR_LOG_ERROR("Failed to load mesh from file with error: %s", aiGetErrorString());
@@ -71,7 +73,7 @@ void Run()
     for (unsigned int i = 0; i != mesh->mNumFaces; i++)
     {
         const aiFace& face = mesh->mFaces[i];
-        Rndr::StackArray<size_t, 3> idx{face.mIndices[0], face.mIndices[1], face.mIndices[2]};
+        Opal::StackArray<size_t, 3> idx{face.mIndices[0], face.mIndices[1], face.mIndices[2]};
         for (int j = 0; j != 3; j++)
         {
             const aiVector3D v = mesh->mVertices[idx[j]];

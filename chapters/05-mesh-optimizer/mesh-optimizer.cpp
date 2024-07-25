@@ -5,6 +5,9 @@
 #include <assimp/scene.h>
 #include <meshoptimizer.h>
 
+#include "opal/paths.h"
+#include "types.h"
+
 void Run();
 
 /**
@@ -21,7 +24,7 @@ int main()
     Rndr::Destroy();
 }
 
-const char* const g_shader_code_vertex = R"(
+const c8 g_shader_code_vertex[] = u8R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -36,7 +39,7 @@ void main()
 }
 )";
 
-static const char* const g_shader_code_geometry = R"(
+static const c8 g_shader_code_geometry[] = u8R"(
 #version 460 core
 layout( triangles ) in;
 layout( triangle_strip, max_vertices = 3 ) out;
@@ -62,7 +65,7 @@ void main()
 }
 )";
 
-const char* const g_shader_code_fragment = R"(
+const c8 g_shader_code_fragment[] = u8R"(
 #version 460 core
 layout (location=0) in vec3 colors;
 layout (location=1) in vec3 barycoords;
@@ -84,15 +87,19 @@ struct PerFrameData
 };
 constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
-bool LoadMeshAndGenerateLOD(const Rndr::String& file_path, Opal::Array<Rndr::Point3f>& vertices, Opal::Array<uint32_t>& indices,
+bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr::Point3f>& vertices, Opal::Array<uint32_t>& indices,
                             Opal::Array<uint32_t>& lod_indices);
 
 void Run()
 {
+    Opal::StringUtf8 assets_root;
+    assets_root.Append(reinterpret_cast<const c8*>(ASSETS_ROOT));
+
     Opal::Array<Rndr::Point3f> positions;
     Opal::Array<uint32_t> indices;
     Opal::Array<uint32_t> indices_lod;
-    [[maybe_unused]] const bool success = LoadMeshAndGenerateLOD(ASSETS_ROOT "duck.gltf", positions, indices, indices_lod);
+    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, assets_root, u8"duck.gltf").GetValue();
+    [[maybe_unused]] const bool success = LoadMeshAndGenerateLOD(file_path, positions, indices, indices_lod);
     if (!success)
     {
         RNDR_LOG_ERROR("Failed to load a mesh!");
@@ -105,7 +112,7 @@ void Run()
     Rndr::SwapChain swap_chain(graphics_context, {.width = window.GetWidth(), .height = window.GetHeight()});
     RNDR_ASSERT(swap_chain.IsValid());
 
-    Rndr::Shader vertex_shader(graphics_context, {.type = Rndr::ShaderType::Vertex, .source = g_shader_code_vertex});
+    Rndr::Shader vertex_shader(graphics_context, Rndr::ShaderDesc{.type = Rndr::ShaderType::Vertex, .source = g_shader_code_vertex});
     RNDR_ASSERT(vertex_shader.IsValid());
     Rndr::Shader geometry_shader(graphics_context, {.type = Rndr::ShaderType::Geometry, .source = g_shader_code_geometry});
     RNDR_ASSERT(geometry_shader.IsValid());
@@ -195,10 +202,11 @@ void Run()
     }
 }
 
-bool LoadMeshAndGenerateLOD(const Rndr::String& file_path, Opal::Array<Rndr::Point3f>& positions, Opal::Array<uint32_t>& indices,
+bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr::Point3f>& positions, Opal::Array<uint32_t>& indices,
                             Opal::Array<uint32_t>& lod_indices)
 {
-    const aiScene* scene = aiImportFile(file_path.c_str(), aiProcess_Triangulate);
+    const c* file_path_raw = reinterpret_cast<const c*>(file_path.GetData());
+    const aiScene* scene = aiImportFile(file_path_raw, aiProcess_Triangulate);
     if (scene == nullptr || !scene->HasMeshes())
     {
         return false;

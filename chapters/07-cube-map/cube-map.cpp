@@ -6,6 +6,7 @@
 
 #include <imgui.h>
 
+#include "opal/paths.h"
 #include "types.h"
 
 void Run();
@@ -39,15 +40,19 @@ struct VertexData
 };
 constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
-bool LoadMesh(const Rndr::String& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices);
+bool LoadMesh(const Opal::StringUtf8& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices);
 Rndr::Bitmap ConvertEquirectangularMapToVerticalCross(const Rndr::Bitmap& input_bitmap);
 Rndr::Bitmap ConvertVerticalCrossToCubeMapFaces(const Rndr::Bitmap& in_bitmap);
 
 void Run()
 {
+    Opal::StringUtf8 assets_root;
+    assets_root.Append(reinterpret_cast<const c8*>(ASSETS_ROOT));
+
     Opal::Array<VertexData> vertices;
     Opal::Array<uint32_t> indices;
-    if (!LoadMesh(ASSETS_ROOT "duck.gltf", vertices, indices))
+    Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, assets_root, u8"duck.gltf").GetValue();
+    if (!LoadMesh(file_path, vertices, indices))
     {
         return;
     }
@@ -61,8 +66,13 @@ void Run()
     RNDR_ASSERT(swap_chain.IsValid());
 
     // Read shaders for duck model from files.
-    const Rndr::String model_vertex_shader_code = Rndr::File::ReadShader(ASSETS_ROOT, "shaders/cube-map-duck-vert.glsl");
-    const Rndr::String model_pixel_shader_code = Rndr::File::ReadShader(ASSETS_ROOT, "shaders/cube-map-duck-frag.glsl");
+    const Opal::StringUtf8 vertex_shader_path =
+        Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-duck-vert.glsl").GetValue();
+    const Opal::StringUtf8 frag_shader_path =
+        Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-duck-frag.glsl").GetValue();
+
+    const Opal::StringUtf8 model_vertex_shader_code = Rndr::File::ReadShader(assets_root, vertex_shader_path);
+    const Opal::StringUtf8 model_pixel_shader_code = Rndr::File::ReadShader(assets_root, frag_shader_path);
 
     // Create shaders for a model.
     Rndr::Shader model_vertex_shader(graphics_context, {.type = Rndr::ShaderType::Vertex, .source = model_vertex_shader_code});
@@ -99,7 +109,8 @@ void Run()
     RNDR_ASSERT(model_pipeline.IsValid());
 
     // Load model albedo texture.
-    Rndr::Bitmap model_image = Rndr::File::ReadEntireImage(ASSETS_ROOT "duck-base-color.png", Rndr::PixelFormat::R8G8B8_UNORM);
+    const Opal::StringUtf8 model_texture_path = Opal::Paths::Combine(nullptr, assets_root, u8"duck-base-color.png").GetValue();
+    Rndr::Bitmap model_image = Rndr::File::ReadEntireImage(model_texture_path, Rndr::PixelFormat::R8G8B8_UNORM);
     RNDR_ASSERT(model_image.IsValid());
     constexpr bool k_use_mips = false;
     const Rndr::Image mesh_albedo(graphics_context, model_image, k_use_mips, {});
@@ -115,17 +126,18 @@ void Run()
     window.on_resize.Bind([&swap_chain](int32_t width, int32_t height) { swap_chain.SetSize(width, height); });
 
     // Equirectangular image to vertical cross
+    const Opal::StringUtf8 equirectangular_path = Opal::Paths::Combine(nullptr, assets_root, u8"piazza_bologni_1k.hdr").GetValue();
     const Rndr::Bitmap equirectangular_image =
-        Rndr::File::ReadEntireImage(ASSETS_ROOT "piazza_bologni_1k.hdr", Rndr::PixelFormat::R32G32B32_FLOAT);
+        Rndr::File::ReadEntireImage(equirectangular_path, Rndr::PixelFormat::R32G32B32_FLOAT);
     RNDR_ASSERT(equirectangular_image.IsValid());
     const Rndr::Bitmap vertical_cross_image = ConvertEquirectangularMapToVerticalCross(equirectangular_image);
     RNDR_ASSERT(vertical_cross_image.IsValid());
-    Rndr::File::SaveImage(vertical_cross_image, "vertical_cross.hdr");
+    Rndr::File::SaveImage(vertical_cross_image, u8"vertical_cross.hdr");
 
     // Vertical cross to array of 6 cube map faces in the GPU memory
     Rndr::Bitmap cube_map_bitmap = ConvertVerticalCrossToCubeMapFaces(vertical_cross_image);
     RNDR_ASSERT(cube_map_bitmap.IsValid());
-    Rndr::File::SaveImage(cube_map_bitmap, "cube_map.hdr");
+    Rndr::File::SaveImage(cube_map_bitmap, u8"cube_map.hdr");
     const Opal::Span<const u8> cube_map_data{cube_map_bitmap.GetData(), static_cast<size_t>(cube_map_bitmap.GetSize3D())};
     const Rndr::Image cube_map_image{graphics_context,
                                      {.width = cube_map_bitmap.GetWidth(),
@@ -139,8 +151,10 @@ void Run()
                                      cube_map_data};
     RNDR_ASSERT(cube_map_image.IsValid());
 
-    const Rndr::String cube_map_vertex_shader_code = Rndr::File::ReadShader(ASSETS_ROOT, "shaders/cube-map-vert.glsl");
-    const Rndr::String cube_map_pixel_shader_code = Rndr::File::ReadShader(ASSETS_ROOT, "shaders/cube-map-frag.glsl");
+    const Opal::StringUtf8 cube_map_vertex_shader_path = Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-vert.glsl").GetValue();
+    const Opal::StringUtf8 cube_map_vertex_shader_code = Rndr::File::ReadShader(assets_root, cube_map_vertex_shader_path);
+    const Opal::StringUtf8 cube_map_pixel_shader_path = Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-frag.glsl").GetValue();
+    const Opal::StringUtf8 cube_map_pixel_shader_code = Rndr::File::ReadShader(assets_root, cube_map_pixel_shader_path);
     Rndr::Shader cube_map_vertex_shader{graphics_context, {.type = Rndr::ShaderType::Vertex, .source = cube_map_vertex_shader_code}};
     Rndr::Shader cube_map_pixel_shader{graphics_context, {.type = Rndr::ShaderType::Fragment, .source = cube_map_pixel_shader_code}};
     RNDR_ASSERT(cube_map_vertex_shader.IsValid());
@@ -198,12 +212,13 @@ void Run()
     }
 }
 
-bool LoadMesh(const Rndr::String& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices)
+bool LoadMesh(const Opal::StringUtf8& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices)
 {
-    const aiScene* scene = aiImportFile(file_path.c_str(), aiProcess_Triangulate);
+    const c* file_path_raw = reinterpret_cast<const c*>(file_path.GetData());
+    const aiScene* scene = aiImportFile(file_path_raw, aiProcess_Triangulate);
     if ((scene == nullptr) || !scene->HasMeshes())
     {
-        RNDR_LOG_ERROR("Unable to load %s", file_path.c_str());
+        RNDR_LOG_ERROR("Unable to load %s", file_path_raw);
         return false;
     }
 
@@ -294,7 +309,7 @@ Rndr::Bitmap ConvertEquirectangularMapToVerticalCross(const Rndr::Bitmap& input_
     // resulting image Y coordinate is growing in the direction of negative Z axis.
 
     constexpr int k_face_count = static_cast<int>(CubeMapFace::EnumCount);
-    const Rndr::StackArray<Vector2i, k_face_count> k_face_offsets = {
+    const Opal::StackArray<Vector2i, k_face_count> k_face_offsets = {
         Vector2i(2 * face_size, face_size), Vector2i(0, face_size),        Vector2i(face_size, 0), Vector2i(face_size, 2 * face_size),
         Vector2i(face_size, 3 * face_size), Vector2i(face_size, face_size)};
 

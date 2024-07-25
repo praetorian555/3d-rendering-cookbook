@@ -8,6 +8,9 @@
 
 #include "imgui-wrapper.h"
 
+#include "opal/paths.h"
+#include "types.h"
+
 void Run();
 
 /**
@@ -35,13 +38,17 @@ struct VertexData
 };
 constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
-bool LoadMesh(const Rndr::String& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices);
+bool LoadMesh(const Opal::StringUtf8& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices);
 
 void Run()
 {
+    Opal::StringUtf8 assets_root;
+    assets_root.Append(reinterpret_cast<const c8*>(ASSETS_ROOT));
+
     Opal::Array<VertexData> vertices;
     Opal::Array<uint32_t> indices;
-    if (!LoadMesh(ASSETS_ROOT "duck.gltf", vertices, indices))
+    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, assets_root, u8"duck.gltf").GetValue();
+    if (!LoadMesh(file_path, vertices, indices))
     {
         return;
     }
@@ -55,9 +62,15 @@ void Run()
     RNDR_ASSERT(swap_chain.IsValid());
 
     // Read shaders from files.
-    const Rndr::String vertex_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "shaders/vertex-pulling-vert.glsl");
-    const Rndr::String pixel_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "shaders/vertex-pulling-frag.glsl");
-    const Rndr::String geometry_shader_code = Rndr::File::ReadEntireTextFile(ASSETS_ROOT "shaders/vertex-pulling-geom.glsl");
+    const Opal::StringUtf8 vertex_pulling_vert_path =
+        Opal::Paths::Combine(nullptr, assets_root, u8"shaders", u8"vertex-pulling-vert.glsl").GetValue();
+    const Opal::StringUtf8 vertex_pulling_frag_path =
+        Opal::Paths::Combine(nullptr, assets_root, u8"shaders", u8"vertex-pulling-frag.glsl").GetValue();
+    const Opal::StringUtf8 vertex_pulling_geom_path =
+        Opal::Paths::Combine(nullptr, assets_root, u8"shaders", u8"vertex-pulling-geom.glsl").GetValue();
+    const Opal::StringUtf8 vertex_shader_code = Rndr::File::ReadEntireTextFile(vertex_pulling_vert_path);
+    const Opal::StringUtf8 pixel_shader_code = Rndr::File::ReadEntireTextFile(vertex_pulling_frag_path);
+    const Opal::StringUtf8 geometry_shader_code = Rndr::File::ReadEntireTextFile(vertex_pulling_geom_path);
 
     // Create shaders.
     Rndr::Shader vertex_shader(graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_code});
@@ -97,7 +110,8 @@ void Run()
     RNDR_ASSERT(solid_pipeline.IsValid());
 
     // Load mesh albedo texture.
-    Rndr::Bitmap mesh_image = Rndr::File::ReadEntireImage(ASSETS_ROOT "duck-base-color.png", Rndr::PixelFormat::R8G8B8_UNORM_SRGB);
+    const Opal::StringUtf8 mesh_image_path = Opal::Paths::Combine(nullptr, assets_root, u8"duck-base-color.png").GetValue();
+    Rndr::Bitmap mesh_image = Rndr::File::ReadEntireImage(mesh_image_path, Rndr::PixelFormat::R8G8B8_UNORM_SRGB);
     RNDR_ASSERT(mesh_image.IsValid());
     constexpr bool k_use_mips = false;
     const Rndr::Image mesh_albedo(graphics_context, mesh_image, k_use_mips, {});
@@ -160,12 +174,13 @@ void Run()
     ImGuiWrapper::Destroy();
 }
 
-bool LoadMesh(const Rndr::String& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices)
+bool LoadMesh(const Opal::StringUtf8& file_path, Opal::Array<VertexData>& vertices, Opal::Array<uint32_t>& indices)
 {
-    const aiScene* scene = aiImportFile(file_path.c_str(), aiProcess_Triangulate);
+    const c* file_path_raw = reinterpret_cast<const c*>(file_path.GetData());
+    const aiScene* scene = aiImportFile(file_path_raw, aiProcess_Triangulate);
     if ((scene == nullptr) || !scene->HasMeshes())
     {
-        RNDR_LOG_ERROR("Unable to load %s", file_path.c_str());
+        RNDR_LOG_ERROR("Unable to load %s", file_path_raw);
         return false;
     }
 

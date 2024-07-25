@@ -128,10 +128,38 @@ cpmaddpackage(
 )
 SET_TARGET_PROPERTIES(meshoptimizer PROPERTIES FOLDER Extern)
 
-set(SHARED_FILES shared/types.h shared/imgui-wrapper.cpp shared/imgui-wrapper.h)
+# Setup GLI ###############################################################################
+FetchContent_Declare(
+        gli
+        GIT_REPOSITORY https://github.com/g-truc/gli
+        GIT_TAG 30808550a20ca53a255e6e1e77070493eda7b736 # 0.8.2
+)
+FetchContent_Populate(gli)
+FetchContent_GetProperties(gli SOURCE_DIR GLI_SOURCE_PATH)
+add_library(gli INTERFACE)
+target_include_directories(gli INTERFACE ${GLI_SOURCE_PATH})
+target_include_directories(gli INTERFACE ${GLI_SOURCE_PATH}/external/glm)
+set_target_properties(gli PROPERTIES FOLDER Extern)
+
+set(SHARED_FILES
+        shared/types.h
+        shared/imgui-wrapper.cpp
+        shared/imgui-wrapper.h
+        shared/cube-map.cpp
+        shared/cube-map.h
+        shared/material.cpp
+        shared/material.h
+        shared/mesh.cpp
+        shared/mesh.h
+        shared/scene.cpp
+        shared/scene.h
+        shared/stb_image_resize2.h
+        shared/stb_image.h
+        shared/stb_image_write.h
+        shared/stb_image.cpp)
 add_library(shared STATIC ${SHARED_FILES})
 target_link_libraries(shared PRIVATE rencook_options rencook_warnings)
-target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp assimp meshoptimizer)
+target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp assimp meshoptimizer gli)
 target_include_directories(shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
 target_compile_definitions(shared PUBLIC -DASSETS_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets/")
 
@@ -162,3 +190,7 @@ target_link_libraries(06-vertex-pulling PRIVATE rencook_options rencook_warnings
 add_executable(07-cube-map chapters/07-cube-map/cube-map.cpp)
 target_link_libraries(07-cube-map PRIVATE shared)
 target_link_libraries(07-cube-map PRIVATE rencook_options rencook_warnings)
+
+add_executable(08-converters chapters/08-converters/converters.cpp chapters/08-converters/file-dialog.cpp)
+target_link_libraries(08-converters PRIVATE shared)
+target_link_libraries(08-converters PRIVATE rencook_options rencook_warnings)

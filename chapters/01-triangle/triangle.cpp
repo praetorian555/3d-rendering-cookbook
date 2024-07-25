@@ -29,7 +29,7 @@ void Run()
     RNDR_ASSERT(graphics_context.IsValid());
     Rndr::SwapChain swap_chain(graphics_context, {.width = window.GetWidth(), .height = window.GetHeight()});
     RNDR_ASSERT(swap_chain.IsValid());
-    Rndr::Shader vertex_shader(graphics_context, {.type = Rndr::ShaderType::Vertex, .source = R"(
+    Rndr::Shader vertex_shader(graphics_context, {.type = Rndr::ShaderType::Vertex, .source = u8R"(
         #version 460 core
         layout (location=0) out vec3 color;
         const vec2 pos[3] = vec2[3](
@@ -48,7 +48,7 @@ void Run()
         }
         )"});
     RNDR_ASSERT(vertex_shader.IsValid());
-    Rndr::Shader pixel_shader(graphics_context, {.type = Rndr::ShaderType::Fragment, .source = R"(
+    Rndr::Shader pixel_shader(graphics_context, {.type = Rndr::ShaderType::Fragment, .source = u8R"(
         #version 460 core
         layout (location=0) in vec3 color;
         layout (location=0) out vec4 out_FragColor;
