@@ -1,5 +1,7 @@
 #include "imgui-wrapper.h"
 
+#include "rndr/core/definitions.h"
+
 #if RNDR_WINDOWS
 
 #ifndef NOMINMAX

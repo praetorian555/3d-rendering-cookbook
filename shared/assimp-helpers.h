@@ -1,7 +1,8 @@
 #pragma once
 
 #include "rndr/core/base.h"
-#include "rndr/utility/mesh.h"
+
+#include "mesh.h"
 
 struct aiMaterial;
 struct aiScene;
@@ -9,9 +10,6 @@ struct aiScene;
 template <typename T>
 class aiMatrix4x4t;
 using aiMatrix4x4 = aiMatrix4x4t<float>;
-
-namespace Rndr
-{
 
 struct MaterialDescription;
 struct SceneDescription;
@@ -43,7 +41,7 @@ bool ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scene,
  * @param attributes_to_load Attributes to load from the mesh file.
  * @return True if mesh data was read successfully, false otherwise.
  */
-bool ReadMeshData(MeshData& out_mesh_data, const String& mesh_file_path,
+bool ReadMeshData(MeshData& out_mesh_data, const Opal::StringUtf8& mesh_file_path,
                   MeshAttributesToLoad attributes_to_load = MeshAttributesToLoad::LoadPositions);
 
 /**
@@ -55,8 +53,8 @@ bool ReadMeshData(MeshData& out_mesh_data, const String& mesh_file_path,
  * @param ai_material Assimp material to read from.
  * @return True if the material description was successfully read, false otherwise.
  */
-bool ReadMaterialDescription(MaterialDescription& out_description, Array<String>& out_texture_paths, Array<String>& out_opacity_maps,
-                             const aiMaterial& ai_material);
+bool ReadMaterialDescription(MaterialDescription& out_description, Opal::Array<Opal::StringUtf8>& out_texture_paths,
+                             Opal::Array<Opal::StringUtf8>& out_opacity_maps, const aiMaterial& ai_material);
 
 /**
  * Reads scene description from the Assimp scene.
@@ -67,4 +65,3 @@ bool ReadMaterialDescription(MaterialDescription& out_description, Array<String>
 bool ReadSceneDescription(SceneDescription& out_scene_description, const aiScene& ai_scene);
 
 }  // namespace AssimpHelpers
-}  // namespace Rndr

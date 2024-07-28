@@ -1,10 +1,23 @@
-#include <windows.h>
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <ShlObj.h>
+#include <Windows.h>
 #include <commdlg.h>
-#include <shlobj.h>
 
-#include "rndr/core/containers/string.h"
+#undef near
+#undef far
 
-Rndr::String OpenFileDialog()
+#include "opal/container/string.h"
+
+#include "types.h"
+
+Opal::StringUtf8 OpenFileDialog()
 {
     OPENFILENAME ofn;
     char file_name[MAX_PATH] = "";
@@ -19,26 +32,29 @@ Rndr::String OpenFileDialog()
     ofn.Flags = OFN_DONTADDTORECENT | OFN_FILEMUSTEXIST;
 
     GetOpenFileName(&ofn);
-    return file_name;
+
+    Opal::StringUtf8 file_name_utf8;
+    file_name_utf8.Append(reinterpret_cast<const c8*>(file_name));
+    return file_name_utf8;
 }
 
-Rndr::String OpenFolderDialog()
+Opal::StringUtf8 OpenFolderDialog()
 {
-    BROWSEINFO bi = { 0 };
+    BROWSEINFO bi = {0};
     bi.lpszTitle = "Browse for folder...";
     LPITEMIDLIST pidl = SHBrowseForFolder(&bi);
-    Rndr::String ret;
+    Opal::StringUtf8 ret;
     if (pidl != 0)
     {
         // get the name of the folder
         char path[MAX_PATH];
         if (SHGetPathFromIDList(pidl, path))
         {
-            ret = path;
+            ret.Append(reinterpret_cast<const c8*>(path));
         }
 
         // free memory used
-        IMalloc *imalloc = 0;
+        IMalloc* imalloc = 0;
         if (SUCCEEDED(SHGetMalloc(&imalloc)))
         {
             imalloc->Free(pidl);

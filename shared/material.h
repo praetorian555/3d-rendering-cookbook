@@ -76,7 +76,7 @@ namespace Material
  * @return True if the textures were successfully converted and downscaled, false otherwise.
  */
 bool ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materials, const Opal::StringUtf8& base_path, Opal::Array<Opal::StringUtf8>& texture_paths,
-                                 const Opal::Array<Opal::StringUtf8>& opacity_textures);
+                                 const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path);
 
 /**
  * Writes the material data to a file.

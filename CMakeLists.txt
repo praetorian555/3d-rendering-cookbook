@@ -153,6 +153,8 @@ set(SHARED_FILES
         shared/mesh.h
         shared/scene.cpp
         shared/scene.h
+        shared/assimp-helpers.h
+        shared/assimp-helpers.cpp
         shared/stb_image_resize2.h
         shared/stb_image.h
         shared/stb_image_write.h
@@ -193,4 +195,5 @@ target_link_libraries(07-cube-map PRIVATE rencook_options rencook_warnings)
 
 add_executable(08-converters chapters/08-converters/converters.cpp chapters/08-converters/file-dialog.cpp)
 target_link_libraries(08-converters PRIVATE shared)
-target_link_libraries(08-converters PRIVATE rencook_options rencook_warnings)
+# Needed since warnings are in third party library
+target_link_libraries(08-converters PRIVATE rencook_options)

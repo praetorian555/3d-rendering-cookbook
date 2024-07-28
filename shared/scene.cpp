@@ -6,7 +6,7 @@
 
 namespace
 {
-bool WriteMap(Rndr::FileHandler& file, const Opal::HashMap<Rndr::Scene::NodeId, uint32_t>& map)
+bool WriteMap(Rndr::FileHandler& file, const Opal::HashMap<Scene::NodeId, uint32_t>& map)
 {
     Opal::Array<uint32_t> flattened_map;
     flattened_map.Reserve(map.size() * 2);
@@ -28,7 +28,7 @@ bool WriteMap(Rndr::FileHandler& file, const Opal::HashMap<Rndr::Scene::NodeId, 
     return true;
 }
 
-bool ReadMap(Rndr::FileHandler& file, Opal::HashMap<Rndr::Scene::NodeId, uint32_t>& map)
+bool ReadMap(Rndr::FileHandler& file, Opal::HashMap<Scene::NodeId, uint32_t>& map)
 {
     size_t flattened_map_size = 0;
     file.Read(&flattened_map_size, sizeof(flattened_map_size), 1);
@@ -77,7 +77,7 @@ bool ReadStringList(Rndr::FileHandler& file, Opal::Array<Opal::StringUtf8>& stri
 
 };  // namespace
 
-bool Rndr::Scene::ReadSceneDescription(SceneDescription& out_scene_description, const Opal::StringUtf8& scene_file)
+bool Scene::ReadSceneDescription(SceneDescription& out_scene_description, const Opal::StringUtf8& scene_file)
 {
     const char* scene_file_raw = reinterpret_cast<const char*>(scene_file.GetData());
     Rndr::FileHandler file(scene_file_raw, "rb");
@@ -112,7 +112,7 @@ bool Rndr::Scene::ReadSceneDescription(SceneDescription& out_scene_description, 
     return true;
 }
 
-bool Rndr::Scene::WriteSceneDescription(const Rndr::SceneDescription& scene_description, const Opal::StringUtf8& scene_file)
+bool Scene::WriteSceneDescription(const SceneDescription& scene_description, const Opal::StringUtf8& scene_file)
 {
     const char* scene_file_raw = reinterpret_cast<const char*>(scene_file.GetData());
     Rndr::FileHandler file(scene_file_raw, "wb");
@@ -144,7 +144,7 @@ bool Rndr::Scene::WriteSceneDescription(const Rndr::SceneDescription& scene_desc
     return true;
 }
 
-bool Rndr::Scene::ReadScene(Rndr::SceneDrawData& out_scene, const Opal::StringUtf8& scene_file, const Opal::StringUtf8& mesh_file,
+bool Scene::ReadScene(SceneDrawData& out_scene, const Opal::StringUtf8& scene_file, const Opal::StringUtf8& mesh_file,
                             const Opal::StringUtf8& material_file, const Rndr::GraphicsContext& graphics_context)
 {
     if (!ReadSceneDescription(out_scene.scene_description, scene_file))
@@ -164,7 +164,7 @@ bool Rndr::Scene::ReadScene(Rndr::SceneDrawData& out_scene, const Opal::StringUt
 
     for (const auto& node : out_scene.scene_description.node_id_to_mesh_id)
     {
-        const Rndr::Scene::NodeId node_id = node.first;
+        const Scene::NodeId node_id = node.first;
         const uint32_t mesh_id = node.second;
         const auto material_iter = out_scene.scene_description.node_id_to_material_id.find(node_id);
         if (material_iter == out_scene.scene_description.node_id_to_material_id.end())
@@ -181,17 +181,17 @@ bool Rndr::Scene::ReadScene(Rndr::SceneDrawData& out_scene, const Opal::StringUt
     }
 
     // Mark root as changed so that whole hierarchy is recalculated
-    Rndr::Scene::MarkAsChanged(out_scene.scene_description, 0);
-    Rndr::Scene::RecalculateWorldTransforms(out_scene.scene_description);
+    Scene::MarkAsChanged(out_scene.scene_description, 0);
+    Scene::RecalculateWorldTransforms(out_scene.scene_description);
 
     return true;
 }
 
-Rndr::Scene::NodeId Rndr::Scene::AddNode(Rndr::SceneDescription& scene, int32_t parent, int32_t level)
+Scene::NodeId Scene::AddNode(SceneDescription& scene, int32_t parent, int32_t level)
 {
     const NodeId node_id = static_cast<NodeId>(scene.hierarchy.GetSize());
-    scene.local_transforms.PushBack(Rndr::Matrix4x4f(1.0f));
-    scene.world_transforms.PushBack(Rndr::Matrix4x4f(1.0f));
+    scene.local_transforms.PushBack(Matrix4x4f(1.0f));
+    scene.world_transforms.PushBack(Matrix4x4f(1.0f));
     scene.hierarchy.PushBack(HierarchyNode{.parent = parent, .last_sibling = -1, .level = level});
 
     if (parent > -1)
@@ -222,33 +222,33 @@ Rndr::Scene::NodeId Rndr::Scene::AddNode(Rndr::SceneDescription& scene, int32_t 
     return node_id;
 }
 
-void Rndr::Scene::SetNodeName(Rndr::SceneDescription& scene, Rndr::Scene::NodeId node, const Opal::StringUtf8& name)
+void Scene::SetNodeName(SceneDescription& scene, Scene::NodeId node, const Opal::StringUtf8& name)
 {
     RNDR_ASSERT(IsValidNodeId(scene, node));
     scene.node_id_to_name[node] = static_cast<uint32_t>(scene.node_names.GetSize());
     scene.node_names.PushBack(name);
 }
 
-bool Rndr::Scene::IsValidNodeId(const Rndr::SceneDescription& scene, Rndr::Scene::NodeId node)
+bool Scene::IsValidNodeId(const SceneDescription& scene, Scene::NodeId node)
 {
     return node < scene.hierarchy.GetSize();
 }
 
-void Rndr::Scene::SetNodeMeshId(Rndr::SceneDescription& scene, Rndr::Scene::NodeId node, uint32_t mesh_id)
+void Scene::SetNodeMeshId(SceneDescription& scene, Scene::NodeId node, uint32_t mesh_id)
 {
     RNDR_ASSERT(IsValidNodeId(scene, node));
     scene.node_id_to_mesh_id[node] = mesh_id;
 }
 
-void Rndr::Scene::SetNodeMaterialId(Rndr::SceneDescription& scene, Rndr::Scene::NodeId node, uint32_t material_id)
+void Scene::SetNodeMaterialId(SceneDescription& scene, Scene::NodeId node, uint32_t material_id)
 {
     RNDR_ASSERT(IsValidNodeId(scene, node));
     scene.node_id_to_material_id[node] = material_id;
 }
 
-void Rndr::Scene::MarkAsChanged(Rndr::SceneDescription& scene, Rndr::Scene::NodeId node)
+void Scene::MarkAsChanged(SceneDescription& scene, Scene::NodeId node)
 {
-    std::stack<Rndr::Scene::NodeId> stack;
+    std::stack<Scene::NodeId> stack;
     stack.push(node);
 
     while (!stack.empty())
@@ -268,7 +268,7 @@ void Rndr::Scene::MarkAsChanged(Rndr::SceneDescription& scene, Rndr::Scene::Node
     }
 }
 
-void Rndr::Scene::RecalculateWorldTransforms(Rndr::SceneDescription& scene)
+void Scene::RecalculateWorldTransforms(SceneDescription& scene)
 {
     // Process root level first
     if (!scene.dirty_nodes[0].IsEmpty())

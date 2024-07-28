@@ -12,9 +12,6 @@
 #include "material.h"
 #include "mesh.h"
 
-namespace Rndr
-{
-
 namespace Scene
 {
 using NodeId = int32_t;
@@ -85,7 +82,7 @@ struct SceneDrawData
     /** Contains all the materials. */
     Opal::Array<MaterialDescription> materials;
     /** Contains all the textures. */
-    Opal::Array<Image> textures;
+    Opal::Array<Rndr::Image> textures;
     /** Contains all the scene data, like hierarchy. */
     SceneDescription scene_description;
 };
@@ -178,5 +175,3 @@ void MarkAsChanged(SceneDescription& scene, NodeId node);
 void RecalculateWorldTransforms(SceneDescription& scene);
 
 }  // namespace Scene
-
-}  // namespace Rndr

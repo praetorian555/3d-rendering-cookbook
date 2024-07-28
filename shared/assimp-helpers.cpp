@@ -1,4 +1,4 @@
-#include "rndr/utility/assimp-helpers.h"
+#include "assimp-helpers.h"
 
 #include <assimp/cimport.h>
 #include <assimp/material.h>
@@ -6,21 +6,22 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
-#include "rndr/utility/material.h"
-#include "rndr/utility/scene.h"
+#include "material.h"
+#include "scene.h"
+#include "types.h"
 
 namespace
 {
-void Traverse(Rndr::SceneDescription& out_scene, const aiScene* ai_scene, const aiNode* ai_node, Rndr::Scene::NodeId parent, int32_t level);
+void Traverse(SceneDescription& out_scene, const aiScene* ai_scene, const aiNode* ai_node, Scene::NodeId parent, int32_t level);
 }
 
-Rndr::Matrix4x4f Rndr::AssimpHelpers::Convert(const aiMatrix4x4& ai_matrix)
+Matrix4x4f AssimpHelpers::Convert(const aiMatrix4x4& ai_matrix)
 {
     return {ai_matrix.a1, ai_matrix.a2, ai_matrix.a3, ai_matrix.a4, ai_matrix.b1, ai_matrix.b2, ai_matrix.b3, ai_matrix.b4,
             ai_matrix.c1, ai_matrix.c2, ai_matrix.c3, ai_matrix.c4, ai_matrix.d1, ai_matrix.d2, ai_matrix.d3, ai_matrix.d4};
 }
 
-bool Rndr::AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scene, MeshAttributesToLoad attributes_to_load)
+bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scene, MeshAttributesToLoad attributes_to_load)
 {
     if (!ai_scene.HasMeshes())
     {
@@ -49,26 +50,27 @@ bool Rndr::AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& a
         for (uint32_t i = 0; i < ai_mesh->mNumVertices; ++i)
         {
             Rndr::Point3f position(ai_mesh->mVertices[i].x, ai_mesh->mVertices[i].y, ai_mesh->mVertices[i].z);
-            out_mesh_data.vertex_buffer_data.insert(out_mesh_data.vertex_buffer_data.end(), reinterpret_cast<uint8_t*>(position.data),
-                                                    reinterpret_cast<uint8_t*>(position.data) + sizeof(position));
+            out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), reinterpret_cast<u8*>(position.data),
+                                                    reinterpret_cast<u8*>(position.data) + sizeof(position));
 
             if (should_load_normals)
             {
                 RNDR_ASSERT(ai_mesh->HasNormals());
                 Rndr::Normal3f normal(ai_mesh->mNormals[i].x, ai_mesh->mNormals[i].y, ai_mesh->mNormals[i].z);
-                out_mesh_data.vertex_buffer_data.insert(out_mesh_data.vertex_buffer_data.end(), reinterpret_cast<uint8_t*>(normal.data),
+                out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(),
+                                                        reinterpret_cast<uint8_t*>(normal.data),
                                                         reinterpret_cast<uint8_t*>(normal.data) + sizeof(normal));
             }
             if (should_load_uvs)
             {
                 aiVector3D ai_uv = ai_mesh->HasTextureCoords(0) ? ai_mesh->mTextureCoords[0][i] : aiVector3D();
                 Rndr::Point2f uv(ai_uv.x, ai_uv.y);
-                out_mesh_data.vertex_buffer_data.insert(out_mesh_data.vertex_buffer_data.end(), reinterpret_cast<uint8_t*>(uv.data),
+                out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), reinterpret_cast<uint8_t*>(uv.data),
                                                         reinterpret_cast<uint8_t*>(uv.data) + sizeof(uv));
             }
         }
 
-        Rndr::Array<Rndr::Array<uint32_t>> lods(MeshDescription::k_max_lods);
+        Opal::Array<Opal::Array<uint32_t>> lods(MeshDescription::k_max_lods);
         for (uint32_t i = 0; i < ai_mesh->mNumFaces; ++i)
         {
             const aiFace& face = ai_mesh->mFaces[i];
@@ -78,12 +80,12 @@ bool Rndr::AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& a
             }
             for (uint32_t j = 0; j < face.mNumIndices; ++j)
             {
-                lods[0].emplace_back(face.mIndices[j]);
+                lods[0].PushBack(face.mIndices[j]);
             }
         }
 
-        out_mesh_data.index_buffer_data.insert(out_mesh_data.index_buffer_data.end(), reinterpret_cast<uint8_t*>(lods[0].data()),
-                                               reinterpret_cast<uint8_t*>(lods[0].data()) + lods[0].size() * sizeof(uint32_t));
+        out_mesh_data.index_buffer_data.Insert(out_mesh_data.index_buffer_data.ConstEnd(), reinterpret_cast<uint8_t*>(lods[0].GetData()),
+                                               reinterpret_cast<uint8_t*>(lods[0].GetData()) + lods[0].GetSize() * sizeof(uint32_t));
 
         // TODO: Generate LODs
 
@@ -94,15 +96,15 @@ bool Rndr::AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& a
         mesh_desc.index_offset = index_offset;
         mesh_desc.lod_count = 1;
         mesh_desc.lod_offsets[0] = 0;
-        mesh_desc.lod_offsets[1] = static_cast<uint32_t>(lods[0].size());
-        mesh_desc.mesh_size = ai_mesh->mNumVertices * vertex_size + static_cast<uint32_t>(lods[0].size()) * sizeof(uint32_t);
+        mesh_desc.lod_offsets[1] = static_cast<uint32_t>(lods[0].GetSize());
+        mesh_desc.mesh_size = ai_mesh->mNumVertices * vertex_size + static_cast<uint32_t>(lods[0].GetSize()) * sizeof(uint32_t);
 
         // TODO: Add material info
 
-        out_mesh_data.meshes.emplace_back(mesh_desc);
+        out_mesh_data.meshes.PushBack(mesh_desc);
 
         vertex_offset += ai_mesh->mNumVertices;
-        index_offset += static_cast<uint32_t>(lods[0].size());
+        index_offset += static_cast<uint32_t>(lods[0].GetSize());
     }
 
     Mesh::UpdateBoundingBoxes(out_mesh_data);
@@ -110,15 +112,14 @@ bool Rndr::AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& a
     return true;
 }
 
-bool Rndr::AssimpHelpers::ReadMeshData(Rndr::MeshData& out_mesh_data, const Rndr::String& mesh_file_path,
-                                       Rndr::MeshAttributesToLoad attributes_to_load)
+bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const Opal::StringUtf8& mesh_file_path, MeshAttributesToLoad attributes_to_load)
 {
     constexpr uint32_t k_ai_process_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals |
                                             aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes | aiProcess_ImproveCacheLocality |
                                             aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData |
                                             aiProcess_GenUVCoords;
 
-    const aiScene* scene = aiImportFile(mesh_file_path.c_str(), k_ai_process_flags);
+    const aiScene* scene = aiImportFile(mesh_file_path.GetDataAs<c>(), k_ai_process_flags);
     if (scene == nullptr || !scene->HasMeshes())
     {
         RNDR_LOG_ERROR("Failed to load mesh from file with error: %s", aiGetErrorString());
@@ -127,7 +128,7 @@ bool Rndr::AssimpHelpers::ReadMeshData(Rndr::MeshData& out_mesh_data, const Rndr
 
     if (!ReadMeshData(out_mesh_data, *scene, attributes_to_load))
     {
-        RNDR_LOG_ERROR("Failed to load mesh data from file: %s", mesh_file_path.c_str());
+        RNDR_LOG_ERROR("Failed to load mesh data from file: %s", mesh_file_path.GetDataAs<c>());
         return false;
     }
 
@@ -138,22 +139,23 @@ bool Rndr::AssimpHelpers::ReadMeshData(Rndr::MeshData& out_mesh_data, const Rndr
 
 namespace
 {
-Rndr::ImageId AddUnique(Rndr::Array<Rndr::String>& files, const char* path)
+ImageId AddUnique(Opal::Array<Opal::StringUtf8>& files, const char* path)
 {
-    for (uint32_t i = 0; i < files.size(); ++i)
+    const Opal::StringUtf8 path_utf8(reinterpret_cast<const c8*>(path));
+    for (uint32_t i = 0; i < files.GetSize(); ++i)
     {
-        if (files[i] == path)
+        if (files[i] == path_utf8)
         {
             return i;
         }
     }
-    files.emplace_back(path);
-    return files.size() - 1;
+    files.PushBack(path_utf8);
+    return files.GetSize() - 1;
 }
 }  // namespace
 
-bool Rndr::AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_description, Rndr::Array<Rndr::String>& out_texture_paths,
-                                                  Rndr::Array<Rndr::String>& out_opacity_maps, const aiMaterial& ai_material)
+bool AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_description, Opal::Array<Opal::StringUtf8>& out_texture_paths,
+                                            Opal::Array<Opal::StringUtf8>& out_opacity_maps, const aiMaterial& ai_material)
 {
     aiColor4D ai_color;
     if (aiGetMaterialColor(&ai_material, AI_MATKEY_COLOR_AMBIENT, &ai_color) == AI_SUCCESS)
@@ -219,7 +221,7 @@ bool Rndr::AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_descr
     unsigned int out_uv_index = 0;
     float out_blend = 1.0f;
     aiTextureOp out_texture_op = aiTextureOp_Add;
-    StackArray<aiTextureMapMode, 2> out_texture_mode = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
+    Opal::StackArray<aiTextureMapMode, 2> out_texture_mode = {aiTextureMapMode_Wrap, aiTextureMapMode_Wrap};
     unsigned int out_texture_flags = 0;
     if (aiGetMaterialTexture(&ai_material, aiTextureType_EMISSIVE, 0, &out_texture_path, &out_texture_mapping, &out_uv_index, &out_blend,
                              &out_texture_op, out_texture_mode.data(), &out_texture_flags) == AI_SUCCESS)
@@ -231,8 +233,8 @@ bool Rndr::AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_descr
     {
         out_description.albedo_texture = AddUnique(out_texture_paths, out_texture_path.C_Str());
         // Some material heuristics
-        const String albedo_map_path = out_texture_path.C_Str();
-        if (albedo_map_path.find("grey_30") != String::npos)
+        const Opal::StringUtf8 albedo_map_path(reinterpret_cast<const c8*>(out_texture_path.C_Str()));
+        if (Opal::Find(albedo_map_path, OPAL_UTF8("grey_30")) != Opal::StringUtf8::k_npos)
         {
             out_description.flags |= MaterialFlags::Transparent;
         }
@@ -272,52 +274,54 @@ bool Rndr::AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_descr
 
     // Material heuristics, modify material parameters based on the texture name so that it looks better.
     aiString ai_material_name;
-    String material_name;
+    Opal::StringUtf8 material_name;
     if (aiGetMaterialString(&ai_material, AI_MATKEY_NAME, &ai_material_name) == AI_SUCCESS)
     {
-        material_name = ai_material_name.C_Str();
+        material_name = reinterpret_cast<const c8*>(ai_material_name.C_Str());
     }
-    if ((material_name.find("Glass") != String::npos) || (material_name.find("Vespa_Headlight") != String::npos))
+    if ((Opal::Find(material_name, OPAL_UTF8("Glass")) != Opal::StringUtf8::k_npos) ||
+        (Opal::Find(material_name, OPAL_UTF8("Vespa_Headlight")) != Opal::StringUtf8::k_npos))
     {
         out_description.alpha_test = 0.75f;
         out_description.transparency_factor = 0.1f;
         out_description.flags |= MaterialFlags::Transparent;
     }
-    else if (material_name.find("Bottle") != String::npos)
+    else if (Opal::Find(material_name, OPAL_UTF8("Bottle")) != Opal::StringUtf8::k_npos)
     {
         out_description.alpha_test = 0.54f;
         out_description.transparency_factor = 0.4f;
         out_description.flags |= MaterialFlags::Transparent;
     }
-    else if (material_name.find("Metal") != String::npos)
+    else if (Opal::Find(material_name, OPAL_UTF8("Metal")) != Opal::StringUtf8::k_npos)
     {
         out_description.metallic_factor = 1.0f;
         out_description.roughness = Vector4f(0.1f, 0.1f, 0.0f, 0.0f);
     }
 
-    RNDR_LOG_DEBUG("Texture paths: %d", out_texture_paths.size());
-    for (const String& texture_path : out_texture_paths)
+    RNDR_LOG_DEBUG("Texture paths: %d", out_texture_paths.GetSize());
+    for (const Opal::StringUtf8& texture_path : out_texture_paths)
     {
-        RNDR_LOG_DEBUG("\t%s", texture_path.c_str());
+        RNDR_LOG_DEBUG("\t%s", texture_path.GetDataAs<c>());
     }
 
-    RNDR_LOG_DEBUG("Opacity maps: %d", out_opacity_maps.size());
-    for (const String& out_opacity_map : out_opacity_maps)
+    RNDR_LOG_DEBUG("Opacity maps: %d", out_opacity_maps.GetSize());
+    for (const Opal::StringUtf8& out_opacity_map : out_opacity_maps)
     {
-        RNDR_LOG_DEBUG("\t%s", out_opacity_map.c_str());
+        RNDR_LOG_DEBUG("\t%s", out_opacity_map.GetDataAs<c>());
     }
 
     return true;
 }
 
-bool Rndr::AssimpHelpers::ReadSceneDescription(Rndr::SceneDescription& out_scene_description, const aiScene& ai_scene)
+bool AssimpHelpers::ReadSceneDescription(SceneDescription& out_scene_description, const aiScene& ai_scene)
 {
-    Traverse(out_scene_description, &ai_scene, ai_scene.mRootNode, Rndr::Scene::k_invalid_node_id, 0);
+    Traverse(out_scene_description, &ai_scene, ai_scene.mRootNode, Scene::k_invalid_node_id, 0);
 
     for (uint32_t i = 0; i < ai_scene.mNumMaterials; ++i)
     {
         aiMaterial* ai_material = ai_scene.mMaterials[i];
-        out_scene_description.material_names.emplace_back(ai_material->GetName().C_Str());
+        const Opal::StringUtf8 material_name = reinterpret_cast<const c8*>(ai_material->GetName().C_Str());
+        out_scene_description.material_names.PushBack(material_name);
     }
 
     return true;
@@ -325,30 +329,36 @@ bool Rndr::AssimpHelpers::ReadSceneDescription(Rndr::SceneDescription& out_scene
 
 namespace
 {
-void Traverse(Rndr::SceneDescription& out_scene, const aiScene* ai_scene, const aiNode* ai_node, Rndr::Scene::NodeId parent, int32_t level)
-{
-    const Rndr::Scene::NodeId new_node_id = Rndr::Scene::AddNode(out_scene, parent, level);
 
-    Rndr::String node_name = ai_node->mName.C_Str();
-    if (node_name.empty())
+Opal::StringUtf8 NumberToStr(i32 number)
+{
+    return reinterpret_cast<const c8*>(std::to_string(number).c_str());
+}
+
+void Traverse(SceneDescription& out_scene, const aiScene* ai_scene, const aiNode* ai_node, Scene::NodeId parent, int32_t level)
+{
+    const Scene::NodeId new_node_id = Scene::AddNode(out_scene, parent, level);
+
+    Opal::StringUtf8 node_name = reinterpret_cast<const c8*>(ai_node->mName.C_Str());
+    if (node_name.IsEmpty())
     {
-        node_name = "Node_" + std::to_string(new_node_id);
+        node_name = OPAL_UTF8("Node_") + NumberToStr(new_node_id);
     }
-    Rndr::Scene::SetNodeName(out_scene, new_node_id, node_name);
+    Scene::SetNodeName(out_scene, new_node_id, node_name);
 
     for (uint32_t i = 0; i < ai_node->mNumMeshes; ++i)
     {
-        const Rndr::Scene::NodeId new_sub_node_id = Rndr::Scene::AddNode(out_scene, new_node_id, level + 1);
-        Rndr::Scene::SetNodeName(out_scene, new_sub_node_id, node_name + "_Mesh_" + std::to_string(i));
+        const Scene::NodeId new_sub_node_id = Scene::AddNode(out_scene, new_node_id, level + 1);
+        Scene::SetNodeName(out_scene, new_sub_node_id, node_name + OPAL_UTF8("_Mesh_") + NumberToStr(i));
         const uint32_t mesh_id = ai_node->mMeshes[i];
-        Rndr::Scene::SetNodeMeshId(out_scene, new_sub_node_id, mesh_id);
-        Rndr::Scene::SetNodeMaterialId(out_scene, new_sub_node_id, ai_scene->mMeshes[mesh_id]->mMaterialIndex);
+        Scene::SetNodeMeshId(out_scene, new_sub_node_id, mesh_id);
+        Scene::SetNodeMaterialId(out_scene, new_sub_node_id, ai_scene->mMeshes[mesh_id]->mMaterialIndex);
 
         out_scene.local_transforms[new_sub_node_id] = Rndr::Matrix4x4f(1.0f);
         out_scene.world_transforms[new_sub_node_id] = Rndr::Matrix4x4f(1.0f);
     }
 
-    out_scene.local_transforms[new_node_id] = Rndr::AssimpHelpers::Convert(ai_node->mTransformation);
+    out_scene.local_transforms[new_node_id] = AssimpHelpers::Convert(ai_node->mTransformation);
     out_scene.world_transforms[new_node_id] = Rndr::Matrix4x4f(1.0f);
 
     for (uint32_t i = 0; i < ai_node->mNumChildren; ++i)
@@ -356,4 +366,4 @@ void Traverse(Rndr::SceneDescription& out_scene, const aiScene* ai_scene, const 
         Traverse(out_scene, ai_scene, ai_node->mChildren[i], new_node_id, level + 1);
     }
 }
-} // namespace
+}  // namespace
