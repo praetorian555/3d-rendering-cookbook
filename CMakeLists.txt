@@ -197,3 +197,8 @@ add_executable(08-converters chapters/08-converters/converters.cpp chapters/08-c
 target_link_libraries(08-converters PRIVATE shared)
 # Needed since warnings are in third party library
 target_link_libraries(08-converters PRIVATE rencook_options)
+
+add_executable(09-pbr-shading chapters/09-pbr-shading/pbr-shading.cpp)
+target_link_libraries(09-pbr-shading PRIVATE shared)
+# Needed since warnings are in third party library
+target_link_libraries(09-pbr-shading PRIVATE rencook_options)
