@@ -97,8 +97,9 @@ cpmaddpackage(
         GITHUB_REPOSITORY
         "assimp/assimp"
         VERSION
-        5.3.1
+        5.4.2
         OPTIONS
+        "ASSIMP_ASSAN OFF"
         "BUILD_SHARED_LIBS OFF"
         "ASSIMP_BUILD_ASSIMP_TOOLS OFF"
         "ASSIMP_BUILD_TESTS OFF"
