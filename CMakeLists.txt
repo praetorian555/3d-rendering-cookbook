@@ -203,3 +203,8 @@ add_executable(09-pbr-shading chapters/09-pbr-shading/pbr-shading.cpp)
 target_link_libraries(09-pbr-shading PRIVATE shared)
 # Needed since warnings are in third party library
 target_link_libraries(09-pbr-shading PRIVATE rencook_options)
+
+add_executable(10-scene-renderer chapters/10-scene-renderer/scene-renderer.cpp)
+target_link_libraries(10-scene-renderer PRIVATE shared)
+# Needed since warnings are in third party library
+target_link_libraries(10-scene-renderer PRIVATE rencook_options)
