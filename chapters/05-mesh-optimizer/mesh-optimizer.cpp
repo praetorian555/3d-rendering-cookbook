@@ -1,11 +1,19 @@
-#include "rndr/rndr.h"
-
 #include <assimp/cimport.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <meshoptimizer.h>
 
+#include "opal/container/string.h"
 #include "opal/paths.h"
+#include "opal/time.h"
+
+#include "rndr/input-layout-builder.h"
+#include "rndr/math.h"
+#include "rndr/render-api.h"
+#include "rndr/rndr.h"
+#include "rndr/trace.h"
+#include "rndr/window.h"
+
 #include "types.h"
 
 void Run();
@@ -24,7 +32,8 @@ int main()
     Rndr::Destroy();
 }
 
-const c8 g_shader_code_vertex[] = u8R"(
+const c8* const g_shader_code_vertex =
+    u8R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -39,7 +48,8 @@ void main()
 }
 )";
 
-static const c8 g_shader_code_geometry[] = u8R"(
+static const c8* const g_shader_code_geometry =
+    u8R"(
 #version 460 core
 layout( triangles ) in;
 layout( triangle_strip, max_vertices = 3 ) out;
@@ -65,7 +75,8 @@ void main()
 }
 )";
 
-const c8 g_shader_code_fragment[] = u8R"(
+const c8* const g_shader_code_fragment =
+    u8R"(
 #version 460 core
 layout (location=0) in vec3 colors;
 layout (location=1) in vec3 barycoords;
@@ -92,14 +103,11 @@ bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr:
 
 void Run()
 {
-    Opal::StringUtf8 assets_root;
-    assets_root.Append(reinterpret_cast<const c8*>(ASSETS_ROOT));
-
     Opal::Array<Rndr::Point3f> positions;
     Opal::Array<uint32_t> indices;
     Opal::Array<uint32_t> indices_lod;
-    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, assets_root, u8"duck.gltf").GetValue();
-    [[maybe_unused]] const bool success = LoadMeshAndGenerateLOD(file_path, positions, indices, indices_lod);
+    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("duck.gltf")).GetValue();
+    const bool success = LoadMeshAndGenerateLOD(file_path, positions, indices, indices_lod);
     if (!success)
     {
         RNDR_LOG_ERROR("Failed to load a mesh!");
@@ -112,7 +120,7 @@ void Run()
     Rndr::SwapChain swap_chain(graphics_context, {.width = window.GetWidth(), .height = window.GetHeight()});
     RNDR_ASSERT(swap_chain.IsValid());
 
-    Rndr::Shader vertex_shader(graphics_context, Rndr::ShaderDesc{.type = Rndr::ShaderType::Vertex, .source = g_shader_code_vertex});
+    Rndr::Shader vertex_shader(graphics_context, {.type = Rndr::ShaderType::Vertex, .source = g_shader_code_vertex});
     RNDR_ASSERT(vertex_shader.IsValid());
     Rndr::Shader geometry_shader(graphics_context, {.type = Rndr::ShaderType::Geometry, .source = g_shader_code_geometry});
     RNDR_ASSERT(geometry_shader.IsValid());
@@ -168,14 +176,14 @@ void Run()
     graphics_context.Bind(per_frame_buffer, 0);
     while (!window.IsClosed())
     {
-        RNDR_TRACE_SCOPED(Main_loop);
+        RNDR_CPU_EVENT_SCOPED("Main loop");
 
-        RNDR_TRACE_START(Process_events);
+        RNDR_CPU_EVENT_BEGIN("Process events");
         window.ProcessEvents();
-        RNDR_TRACE_END(Process_events);
+        RNDR_CPU_EVENT_END("Process events");
 
         const float ratio = static_cast<float>(window.GetWidth()) / static_cast<float>(window.GetHeight());
-        const float angle = static_cast<float>(std::fmod(10 * Rndr::GetSystemTime(), 360.0));
+        const float angle = static_cast<float>(std::fmod(10 * Opal::GetSeconds(), 360.0));
         const Rndr::Matrix4x4f t1 = Math::Translate(Rndr::Vector3f(-0.5f, -0.5f, -1.5f)) *
                                     Math::Rotate(angle, Rndr::Vector3f(0.0f, 1.0f, 0.0f)) * Math::RotateX(-90.0f);
         const Rndr::Matrix4x4f t2 = Math::Translate(Rndr::Vector3f(0.5f, -0.5f, -1.5f)) *
@@ -205,8 +213,7 @@ void Run()
 bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr::Point3f>& positions, Opal::Array<uint32_t>& indices,
                             Opal::Array<uint32_t>& lod_indices)
 {
-    const c* file_path_raw = reinterpret_cast<const c*>(file_path.GetData());
-    const aiScene* scene = aiImportFile(file_path_raw, aiProcess_Triangulate);
+    const aiScene* scene = aiImportFile(file_path.GetDataAs<c>(), aiProcess_Triangulate);
     if (scene == nullptr || !scene->HasMeshes())
     {
         return false;
@@ -228,12 +235,13 @@ bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr:
 
     // Reindex the vertex buffer so that we remove redundant vertices.
     Opal::Array<uint32_t> remap(indices.GetSize());
-    const size_t vertex_count =
-        meshopt_generateVertexRemap(remap.GetData(), indices.GetData(), indices.GetSize(), positions.GetData(), indices.GetSize(), sizeof(Rndr::Point3f));
+    const size_t vertex_count = meshopt_generateVertexRemap(remap.GetData(), indices.GetData(), indices.GetSize(), positions.GetData(),
+                                                            indices.GetSize(), sizeof(Rndr::Point3f));
     Opal::Array<uint32_t> remapped_indices(indices.GetSize());
     Opal::Array<Rndr::Point3f> remapped_vertices(vertex_count);
     meshopt_remapIndexBuffer(remapped_indices.GetData(), indices.GetData(), indices.GetSize(), remap.GetData());
-    meshopt_remapVertexBuffer(remapped_vertices.GetData(), positions.GetData(), positions.GetSize(), sizeof(Rndr::Point3f), remap.GetData());
+    meshopt_remapVertexBuffer(remapped_vertices.GetData(), positions.GetData(), positions.GetSize(), sizeof(Rndr::Point3f),
+                              remap.GetData());
 
     // Optimize the vertex cache by organizing the vertex data for same triangles to be close to
     // each other.
@@ -244,8 +252,8 @@ bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr:
                              reinterpret_cast<float*>(remapped_vertices.GetData()), vertex_count, sizeof(Rndr::Point3f), 1.05f);
 
     // Optimize vertex fetches by reordering the vertex buffer.
-    meshopt_optimizeVertexFetch(remapped_vertices.GetData(), remapped_indices.GetData(), indices.GetSize(), remapped_vertices.GetData(), vertex_count,
-                                sizeof(Rndr::Point3f));
+    meshopt_optimizeVertexFetch(remapped_vertices.GetData(), remapped_indices.GetData(), indices.GetSize(), remapped_vertices.GetData(),
+                                vertex_count, sizeof(Rndr::Point3f));
 
     // Generate lower level LOD.
     constexpr float k_threshold = 0.2f;
