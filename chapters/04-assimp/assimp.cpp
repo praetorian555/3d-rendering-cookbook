@@ -1,9 +1,18 @@
-#include "rndr/rndr.h"
-
 #include <assimp/cimport.h>
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 #include <assimp/version.h>
+
+#include "opal/container/stack-array.h"
+#include "opal/container/string.h"
+#include "opal/paths.h"
+#include "opal/time.h"
+
+#include "rndr/input-layout-builder.h"
+#include "rndr/math.h"
+#include "rndr/render-api.h"
+#include "rndr/rndr.h"
+#include "rndr/window.h"
 
 #include "types.h"
 
@@ -24,7 +33,8 @@ int main()
     Rndr::Destroy();
 }
 
-const c8 g_shader_code_vertex[] = u8R"(
+const c8* const g_shader_code_vertex =
+    u8R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -40,7 +50,8 @@ void main()
 }
 )";
 
-const c8 g_shader_code_fragment[] = u8R"(
+const c8* const g_shader_code_fragment =
+    u8R"(
 #version 460 core
 layout (location=0) in vec3 color;
 layout (location=0) out vec4 out_FragColor;
@@ -59,8 +70,8 @@ constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
 void Run()
 {
-    const char* file_path = ASSETS_ROOT "duck.gltf";
-    const aiScene* scene = aiImportFile(file_path, aiProcess_Triangulate);
+    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("duck.gltf")).GetValue();
+    const aiScene* scene = aiImportFile(file_path.GetDataAs<Rndr::c>(), aiProcess_Triangulate);
     if (scene == nullptr || !scene->HasMeshes())
     {
         RNDR_LOG_ERROR("Failed to load mesh from file with error: %s", aiGetErrorString());
@@ -131,7 +142,7 @@ void Run()
         window.ProcessEvents();
 
         const float ratio = static_cast<float>(window.GetWidth()) / static_cast<float>(window.GetHeight());
-        const float angle = static_cast<float>(std::fmod(10 * Rndr::GetSystemTime(), 360.0));
+        const float angle = static_cast<float>(std::fmod(10 * Opal::GetSeconds(), 360.0));
         const Rndr::Matrix4x4f t = Math::Translate(Rndr::Vector3f(0.0f, -0.5f, -1.5f)) *
                                    Math::Rotate(angle, Rndr::Vector3f(0.0f, 1.0f, 0.0f)) * Math::RotateX(-90.0f);
         const Rndr::Matrix4x4f p = Math::Perspective_RH_N1(45.0f, ratio, 0.1f, 1000.0f);

@@ -1,4 +1,6 @@
 #include "rndr/rndr.h"
+#include "rndr/window.h"
+#include "rndr/render-api.h"
 
 #include "types.h"
 

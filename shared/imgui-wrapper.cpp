@@ -1,23 +1,6 @@
 #include "imgui-wrapper.h"
 
-#include "rndr/core/definitions.h"
-
-#if RNDR_WINDOWS
-
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-
-#include <windows.h>
-
-#undef near
-#undef far
-
-#endif
+#include "rndr/platform/windows-header.h"
 
 #if RNDR_WINDOWS
 #include "backends/imgui_impl_win32.h"
@@ -29,9 +12,9 @@
 #include "backends/imgui_impl_opengl3.h"
 #endif
 
-#include "rndr/core/base.h"
-#include "rndr/core/render-api.h"
-#include "rndr/core/window.h"
+#include "rndr/render-api.h"
+#include "rndr/window.h"
+#include "rndr/log.h"
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND handle, UINT msg_code, WPARAM param_w, LPARAM param_l);

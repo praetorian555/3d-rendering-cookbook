@@ -1,13 +1,19 @@
-#include "rndr/rndr.h"
-
 #include <thread>
 
 #include "EtcLib/Etc/Etc.h"
 #include "EtcLib/Etc/EtcImage.h"
 #include "EtcTool/EtcFile.h"
 
-#include "imgui-wrapper.h"
 #include "opal/paths.h"
+#include "opal/time.h"
+
+#include "rndr/file.h"
+#include "rndr/input.h"
+#include "rndr/render-api.h"
+#include "rndr/rndr.h"
+#include "rndr/window.h"
+
+#include "imgui-wrapper.h"
 #include "types.h"
 
 void Run();
@@ -28,7 +34,8 @@ int main()
     Rndr::Destroy();
 }
 
-static const c8 g_vertex_shader_source[] = u8R"(
+static const c8* const g_vertex_shader_source =
+    u8R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -52,7 +59,8 @@ void main()
 }
 )";
 
-static const c8 g_pixel_shader_source[] = u8R"(
+static const c8* const g_pixel_shader_source =
+    u8R"(
 #version 460 core
 layout (location=0) in vec2 uv;
 layout (location=0) out vec4 out_FragColor;
@@ -90,12 +98,16 @@ void Run()
         {.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = k_per_frame_size, .stride = k_per_frame_size});
     RNDR_ASSERT(per_frame_buffer.IsValid());
 
-    const c8* assets_root_raw = reinterpret_cast<const c8*>(ASSETS_ROOT);
-    const Opal::StringUtf8 bitmap_path = Opal::Paths::Combine(nullptr, assets_root_raw, u8"brick-wall.jpg").GetValue();
-    Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(bitmap_path, Rndr::PixelFormat::R8G8B8_UNORM);
+    const Opal::StringUtf8 image_path = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("brick-wall.jpg")).GetValue();
+    Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(image_path, Rndr::PixelFormat::R8G8B8_UNORM);
     RNDR_ASSERT(bitmap.IsValid());
-    constexpr bool k_use_mips = false;
-    const Rndr::Image image(graphics_context, bitmap, k_use_mips, {});
+    const Rndr::Texture image(graphics_context,
+                              {
+                                  .width = bitmap.GetWidth(),
+                                  .height = bitmap.GetHeight(),
+                                  .pixel_format = bitmap.GetPixelFormat()
+                              },
+                              {}, Opal::Span<const u8>(bitmap.GetData(), bitmap.GetSize3D()));
     RNDR_ASSERT(image.IsValid());
 
     constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_white;
@@ -158,7 +170,7 @@ void Run()
         Rndr::InputSystem::ProcessEvents(0);
 
         const f32 ratio = static_cast<f32>(window.GetWidth()) / static_cast<f32>(window.GetHeight());
-        const f32 angle = static_cast<f32>(std::fmod(10 * Rndr::GetSystemTime(), 360.0));
+        const f32 angle = static_cast<f32>(std::fmod(10 * Opal::GetSeconds(), 360.0));
         const Rndr::Matrix4x4f t = Math::Rotate(angle, Rndr::Vector3f(0.0f, 0.0f, 1.0f));
         const Rndr::Matrix4x4f p = Math::Orthographic_RH_N1(-ratio, ratio, -1.0f, 1.0f, -1.0f, 1.0f);
         Rndr::Matrix4x4f mvp = p * t;

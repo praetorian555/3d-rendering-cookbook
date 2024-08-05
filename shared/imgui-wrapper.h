@@ -1,7 +1,5 @@
 #pragma once
 
-#include "rndr/core/base.h"
-
 struct ImGuiDesc
 {
     bool enable_keyboard_navigation = false;
