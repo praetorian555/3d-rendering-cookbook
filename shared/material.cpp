@@ -274,7 +274,7 @@ Opal::StringUtf8 ConvertTexture(const Opal::StringUtf8& base_path, const Opal::S
     RNDR_ASSERT(src_path_result.HasValue());
     const Opal::StringUtf8 src_stem = Opal::Move(src_path_result.GetValue());
 
-    const Opal::StringUtf8 relative_dst_file = Opal::Paths::Combine(nullptr, out_base_path, relative_src_stem + u8"_rescaled.png").GetValue();
+    const Opal::StringUtf8 relative_dst_file = Opal::Paths::Combine(nullptr, relative_src_stem + u8"_rescaled.png").GetValue();
     const Opal::StringUtf8 dst_file = Opal::Paths::Combine(nullptr, out_base_path, src_stem + u8"_rescaled.png").GetValue();
 
     const char* src_file_raw = reinterpret_cast<const c*>(src_file.GetData());
