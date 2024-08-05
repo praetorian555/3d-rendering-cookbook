@@ -1,4 +1,3 @@
-#include "rndr/rndr.h"
 
 #include <assimp/cimport.h>
 #include <assimp/postprocess.h>
@@ -6,7 +5,16 @@
 
 #include <imgui.h>
 
+#include "opal/container/string.h"
 #include "opal/paths.h"
+#include "opal/time.h"
+
+#include "rndr/file.h"
+#include "rndr/input-layout-builder.h"
+#include "rndr/render-api.h"
+#include "rndr/rndr.h"
+#include "rndr/window.h"
+
 #include "types.h"
 
 void Run();
@@ -66,10 +74,8 @@ void Run()
     RNDR_ASSERT(swap_chain.IsValid());
 
     // Read shaders for duck model from files.
-    const Opal::StringUtf8 vertex_shader_path =
-        Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-duck-vert.glsl").GetValue();
-    const Opal::StringUtf8 frag_shader_path =
-        Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-duck-frag.glsl").GetValue();
+    const Opal::StringUtf8 vertex_shader_path = Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-duck-vert.glsl").GetValue();
+    const Opal::StringUtf8 frag_shader_path = Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-duck-frag.glsl").GetValue();
 
     const Opal::StringUtf8 model_vertex_shader_code = Rndr::File::ReadShader(assets_root, vertex_shader_path);
     const Opal::StringUtf8 model_pixel_shader_code = Rndr::File::ReadShader(assets_root, frag_shader_path);
@@ -112,8 +118,12 @@ void Run()
     const Opal::StringUtf8 model_texture_path = Opal::Paths::Combine(nullptr, assets_root, u8"duck-base-color.png").GetValue();
     Rndr::Bitmap model_image = Rndr::File::ReadEntireImage(model_texture_path, Rndr::PixelFormat::R8G8B8_UNORM);
     RNDR_ASSERT(model_image.IsValid());
-    constexpr bool k_use_mips = false;
-    const Rndr::Image mesh_albedo(graphics_context, model_image, k_use_mips, {});
+    const Rndr::Texture mesh_albedo(graphics_context,
+                                    {.width = model_image.GetWidth(),
+                                     .height = model_image.GetHeight(),
+                                     .array_size = model_image.GetDepth(),
+                                     .pixel_format = model_image.GetPixelFormat()},
+                                    {}, Opal::Span<const u8>(model_image.GetData(), model_image.GetSize3D()));
     RNDR_ASSERT(mesh_albedo.IsValid());
 
     // Create a buffer to store per-frame data.
@@ -127,8 +137,7 @@ void Run()
 
     // Equirectangular image to vertical cross
     const Opal::StringUtf8 equirectangular_path = Opal::Paths::Combine(nullptr, assets_root, u8"piazza_bologni_1k.hdr").GetValue();
-    const Rndr::Bitmap equirectangular_image =
-        Rndr::File::ReadEntireImage(equirectangular_path, Rndr::PixelFormat::R32G32B32_FLOAT);
+    const Rndr::Bitmap equirectangular_image = Rndr::File::ReadEntireImage(equirectangular_path, Rndr::PixelFormat::R32G32B32_FLOAT);
     RNDR_ASSERT(equirectangular_image.IsValid());
     const Rndr::Bitmap vertical_cross_image = ConvertEquirectangularMapToVerticalCross(equirectangular_image);
     RNDR_ASSERT(vertical_cross_image.IsValid());
@@ -139,16 +148,16 @@ void Run()
     RNDR_ASSERT(cube_map_bitmap.IsValid());
     Rndr::File::SaveImage(cube_map_bitmap, u8"cube_map.hdr");
     const Opal::Span<const u8> cube_map_data{cube_map_bitmap.GetData(), static_cast<size_t>(cube_map_bitmap.GetSize3D())};
-    const Rndr::Image cube_map_image{graphics_context,
-                                     {.width = cube_map_bitmap.GetWidth(),
-                                      .height = cube_map_bitmap.GetHeight(),
-                                      .array_size = cube_map_bitmap.GetDepth(),
-                                      .type = Rndr::ImageType::CubeMap,
-                                      .pixel_format = cube_map_bitmap.GetPixelFormat(),
-                                      .sampler = {.address_mode_u = Rndr::ImageAddressMode::Clamp,
-                                                  .address_mode_v = Rndr::ImageAddressMode::Clamp,
-                                                  .address_mode_w = Rndr::ImageAddressMode::Clamp}},
-                                     cube_map_data};
+    const Rndr::Texture cube_map_image{graphics_context,
+                                       {.width = cube_map_bitmap.GetWidth(),
+                                        .height = cube_map_bitmap.GetHeight(),
+                                        .array_size = cube_map_bitmap.GetDepth(),
+                                        .type = Rndr::TextureType::CubeMap,
+                                        .pixel_format = cube_map_bitmap.GetPixelFormat()},
+                                       {.address_mode_u = Rndr::ImageAddressMode::Clamp,
+                                        .address_mode_v = Rndr::ImageAddressMode::Clamp,
+                                        .address_mode_w = Rndr::ImageAddressMode::Clamp},
+                                       cube_map_data};
     RNDR_ASSERT(cube_map_image.IsValid());
 
     const Opal::StringUtf8 cube_map_vertex_shader_path = Opal::Paths::Combine(nullptr, u8"shaders", u8"cube-map-vert.glsl").GetValue();
@@ -185,7 +194,7 @@ void Run()
 
         // Setup transform that rotates the model around the Y axis.
         const float ratio = static_cast<float>(window.GetWidth()) / static_cast<float>(window.GetHeight());
-        const float angle = static_cast<float>(std::fmod(10 * Rndr::GetSystemTime(), 360.0));
+        const float angle = static_cast<float>(std::fmod(10 * Opal::GetSeconds(), 360.0));
         const Rndr::Matrix4x4f t = Math::Translate(Rndr::Vector3f(0.0f, -0.5f, -1.5f)) *
                                    Math::Rotate(angle, Rndr::Vector3f(0.0f, 1.0f, 0.0f)) * Math::RotateX(-90.0f);
         const Rndr::Matrix4x4f p = Math::Perspective_RH_N1(45.0f, ratio, 0.1f, 1000.0f);
