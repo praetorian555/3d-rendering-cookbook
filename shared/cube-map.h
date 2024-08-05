@@ -1,7 +1,7 @@
 #pragma once
 
-#include "rndr/core/bitmap.h"
-#include "rndr/core/math.h"
+#include "rndr/bitmap.h"
+#include "rndr/math.h"
 
 #include "types.h"
 

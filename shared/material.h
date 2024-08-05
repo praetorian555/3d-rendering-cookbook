@@ -2,9 +2,10 @@
 
 #include "opal/container/array.h"
 #include "opal/container/string.h"
-#include "rndr/core/enum-flags.h"
-#include "rndr/core/math.h"
-#include "rndr/core/render-api.h"
+
+#include "rndr/enum-flags.h"
+#include "rndr/math.h"
+#include "rndr/render-api.h"
 
 #include "types.h"
 
@@ -75,8 +76,9 @@ namespace Material
  * @param opacity_textures List of paths to opacity textures relative to the base path.
  * @return True if the textures were successfully converted and downscaled, false otherwise.
  */
-bool ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materials, const Opal::StringUtf8& base_path, Opal::Array<Opal::StringUtf8>& texture_paths,
-                                 const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path);
+bool ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materials, const Opal::StringUtf8& base_path,
+                                 Opal::Array<Opal::StringUtf8>& texture_paths, const Opal::Array<Opal::StringUtf8>& opacity_textures,
+                                 const Opal::StringUtf8& out_base_path);
 
 /**
  * Writes the material data to a file.
@@ -85,7 +87,8 @@ bool ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materia
  * @param file_path Path to the file.
  * @return True if the material data was written successfully, false otherwise.
  */
-bool WriteData(const Opal::Array<MaterialDescription>& materials, const Opal::Array<Opal::StringUtf8>& texture_paths, const Opal::StringUtf8& file_path);
+bool WriteData(const Opal::Array<MaterialDescription>& materials, const Opal::Array<Opal::StringUtf8>& texture_paths,
+               const Opal::StringUtf8& file_path);
 
 /**
  * Reads the material data from a file and loads textures to the GPU.
@@ -95,7 +98,7 @@ bool WriteData(const Opal::Array<MaterialDescription>& materials, const Opal::Ar
  * @param graphics_context Graphics context used to load the textures to the GPU.
  * @return True if the material data was read successfully and the textures were loaded to the GPU, false otherwise.
  */
-bool ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materials, Opal::Array<Rndr::Image>& out_textures, const Opal::StringUtf8& file_path,
-                          const Rndr::GraphicsContext& graphics_context);
+bool ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materials, Opal::Array<Rndr::Texture>& out_textures,
+                          const Opal::StringUtf8& file_path, const Rndr::GraphicsContext& graphics_context);
 
 }  // namespace Material

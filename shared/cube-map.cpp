@@ -2,6 +2,8 @@
 
 #include "stb_image_resize2.h"
 
+#include "rndr/log.h"
+
 // Represents faces in a resulting image.
 enum class CubeMapFace
 {

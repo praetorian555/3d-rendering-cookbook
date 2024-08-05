@@ -1,6 +1,7 @@
 #include "mesh.h"
 
-#include "rndr/core/file.h"
+#include "rndr/file.h"
+#include "rndr/log.h"
 
 namespace
 {
@@ -176,8 +177,8 @@ bool Mesh::Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data)
     return true;
 }
 
-bool Mesh::GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands,
-                                 const Opal::Array<MeshDrawData>& mesh_draw_data, const MeshData& mesh_data)
+bool Mesh::GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands, const Opal::Array<MeshDrawData>& mesh_draw_data,
+                           const MeshData& mesh_data)
 {
     out_draw_commands.Resize(mesh_draw_data.GetSize());
     for (int i = 0; i < out_draw_commands.GetSize(); i++)
@@ -191,8 +192,7 @@ bool Mesh::GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands
                     mesh_draw_data[i].index_buffer_offset <= static_cast<int64_t>(UINT32_MAX));
         RNDR_ASSERT(mesh_draw_data[i].vertex_buffer_offset >= 0 &&
                     mesh_draw_data[i].vertex_buffer_offset <= static_cast<int64_t>(UINT32_MAX));
-        RNDR_ASSERT(mesh_draw_data[i].material_index >= 0 &&
-                    mesh_draw_data[i].material_index <= static_cast<int64_t>(UINT32_MAX));
+        RNDR_ASSERT(mesh_draw_data[i].material_index >= 0 && mesh_draw_data[i].material_index <= static_cast<int64_t>(UINT32_MAX));
         out_draw_commands[i] = {.index_count = static_cast<uint32_t>(index_count),
                                 .instance_count = 1,
                                 .first_index = static_cast<uint32_t>(mesh_draw_data[i].index_buffer_offset),

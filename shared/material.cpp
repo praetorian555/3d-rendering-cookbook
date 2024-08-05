@@ -10,16 +10,18 @@
 #include "opal/container/string-hash.h"
 #include "opal/paths.h"
 
-#include "rndr/core/file.h"
+#include "rndr/file.h"
+#include "rndr/log.h"
 
 namespace
 {
-Opal::StringUtf8 ConvertTexture(const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
-                                Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
-                                const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path);
-bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Image>& out_textures,
+Opal::StringUtf8 ConvertTexture(
+    const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
+    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
+    const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path);
+bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Texture>& out_textures,
                    const Rndr::GraphicsContext& graphics_context, const Opal::Array<Opal::StringUtf8>& in_texture_paths);
-Rndr::Image LoadTexture(const Rndr::GraphicsContext& graphics_context, const Opal::StringUtf8& texture_path);
+Rndr::Texture LoadTexture(const Rndr::GraphicsContext& graphics_context, const Opal::StringUtf8& texture_path);
 }  // namespace
 
 bool Material::ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materials, const Opal::StringUtf8& base_path,
@@ -78,7 +80,7 @@ bool Material::WriteData(const Opal::Array<MaterialDescription>& materials, cons
     return true;
 }
 
-bool Material::ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materials, Opal::Array<Rndr::Image>& out_textures,
+bool Material::ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materials, Opal::Array<Rndr::Texture>& out_textures,
                                     const Opal::StringUtf8& file_path, const Rndr::GraphicsContext& graphics_context)
 {
     Opal::StringLocale file_path_locale;
@@ -158,13 +160,13 @@ bool Material::ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materi
 
 namespace
 {
-bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Image>& out_textures,
+bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Texture>& out_textures,
                    const Rndr::GraphicsContext& graphics_context, const Opal::Array<Opal::StringUtf8>& in_texture_paths)
 {
     if (in_out_material.albedo_texture != k_invalid_image_id)
     {
         const Opal::StringUtf8& albedo_map_path = in_texture_paths[static_cast<size_t>(in_out_material.albedo_texture)];
-        Rndr::Image albedo_map = LoadTexture(graphics_context, albedo_map_path);
+        Rndr::Texture albedo_map = LoadTexture(graphics_context, albedo_map_path);
         if (!albedo_map.IsValid())
         {
             RNDR_LOG_ERROR("Failed to load albedo map: %s", reinterpret_cast<const c*>(albedo_map_path.GetData()));
@@ -181,7 +183,7 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Image
     {
         const Opal::StringUtf8& metallic_roughness_map_path =
             in_texture_paths[static_cast<size_t>(in_out_material.metallic_roughness_texture)];
-        Rndr::Image metallic_roughness_map = LoadTexture(graphics_context, metallic_roughness_map_path);
+        Rndr::Texture metallic_roughness_map = LoadTexture(graphics_context, metallic_roughness_map_path);
         if (!metallic_roughness_map.IsValid())
         {
             RNDR_LOG_ERROR("Failed to load metallic roughness map: %s", metallic_roughness_map_path.GetData());
@@ -197,7 +199,7 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Image
     if (in_out_material.normal_texture != k_invalid_image_id)
     {
         const Opal::StringUtf8& normal_map_path = in_texture_paths[static_cast<size_t>(in_out_material.normal_texture)];
-        Rndr::Image normal_map = LoadTexture(graphics_context, normal_map_path);
+        Rndr::Texture normal_map = LoadTexture(graphics_context, normal_map_path);
         if (!normal_map.IsValid())
         {
             RNDR_LOG_ERROR("Failed to load normal map: %s", normal_map_path.GetData());
@@ -214,7 +216,7 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Image
     {
         const Opal::StringUtf8& ambient_occlusion_map_path =
             in_texture_paths[static_cast<size_t>(in_out_material.ambient_occlusion_texture)];
-        Rndr::Image ambient_occlusion_map = LoadTexture(graphics_context, ambient_occlusion_map_path);
+        Rndr::Texture ambient_occlusion_map = LoadTexture(graphics_context, ambient_occlusion_map_path);
         if (!ambient_occlusion_map.IsValid())
         {
             RNDR_LOG_ERROR("Failed to load ambient occlusion map: %s", ambient_occlusion_map_path.GetData());
@@ -230,7 +232,7 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Image
     if (in_out_material.emissive_texture != k_invalid_image_id)
     {
         const Opal::StringUtf8& emissive_map_path = in_texture_paths[static_cast<size_t>(in_out_material.emissive_texture)];
-        Rndr::Image emissive_map = LoadTexture(graphics_context, emissive_map_path);
+        Rndr::Texture emissive_map = LoadTexture(graphics_context, emissive_map_path);
         if (!emissive_map.IsValid())
         {
             RNDR_LOG_ERROR("Failed to load emissive map: %s", emissive_map_path.GetData());
@@ -249,9 +251,10 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Image
     return true;
 }
 
-Opal::StringUtf8 ConvertTexture(const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
-                                Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
-                                const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
+Opal::StringUtf8 ConvertTexture(
+    const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
+    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
+    const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
 {
     constexpr int32_t k_max_new_width = 512;
     constexpr int32_t k_max_new_height = 512;
@@ -312,13 +315,11 @@ Opal::StringUtf8 ConvertTexture(const Opal::StringUtf8& base_path, const Opal::S
         stbi_uc* opacity_pixels = stbi_load(opacity_map_file_raw, &opacity_width, &opacity_height, nullptr, 1);
         if (opacity_pixels == nullptr)
         {
-            RNDR_LOG_WARNING("ConvertTexture: Failed to load opacity map [%s] for [%s] texture", opacity_map_file_raw,
-                             src_file_raw);
+            RNDR_LOG_WARNING("ConvertTexture: Failed to load opacity map [%s] for [%s] texture", opacity_map_file_raw, src_file_raw);
         }
         if (opacity_width != src_width || opacity_height != src_height)
         {
-            RNDR_LOG_WARNING("ConvertTexture: Opacity map [%s] has different size than [%s] texture", opacity_map_file_raw,
-                             src_file_raw);
+            RNDR_LOG_WARNING("ConvertTexture: Opacity map [%s] has different size than [%s] texture", opacity_map_file_raw, src_file_raw);
         }
 
         // store the opacity mask in the alpha component of this image
@@ -369,7 +370,7 @@ cleanup:
     return relative_dst_file;
 }
 
-Rndr::Image LoadTexture(const Rndr::GraphicsContext& graphics_context, const Opal::StringUtf8& texture_path)
+Rndr::Texture LoadTexture(const Rndr::GraphicsContext& graphics_context, const Opal::StringUtf8& texture_path)
 {
     constexpr bool k_flip_vertically = true;
     Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, k_flip_vertically);
@@ -378,16 +379,16 @@ Rndr::Image LoadTexture(const Rndr::GraphicsContext& graphics_context, const Opa
         RNDR_LOG_ERROR("Failed to load texture from file: %s", texture_path.GetData());
         return {};
     }
-    const Rndr::ImageDesc image_desc{.width = bitmap.GetWidth(),
-                                     .height = bitmap.GetHeight(),
-                                     .array_size = 1,
-                                     .type = Rndr::ImageType::Image2D,
-                                     .pixel_format = bitmap.GetPixelFormat(),
-                                     .use_mips = true,
-                                     .is_bindless = true,
-                                     .sampler = {.max_anisotropy = 16.0f, .border_color = Rndr::Colors::k_white}};
+    const Rndr::TextureDesc image_desc{.width = bitmap.GetWidth(),
+                                       .height = bitmap.GetHeight(),
+                                       .array_size = 1,
+                                       .type = Rndr::TextureType::Texture2D,
+                                       .pixel_format = bitmap.GetPixelFormat(),
+                                       .use_mips = true,
+                                       .is_bindless = true};
+    const Rndr::SamplerDesc sampler_desc{.max_anisotropy = 16.0f, .border_color = Rndr::Colors::k_white};
     const Opal::Span<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
-    return {graphics_context, image_desc, bitmap_data};
+    return {graphics_context, image_desc, sampler_desc, bitmap_data};
 }
 
 }  // namespace

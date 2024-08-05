@@ -2,7 +2,7 @@
 
 #include <stack>
 
-#include "rndr/core/file.h"
+#include "rndr/file.h"
 
 namespace
 {

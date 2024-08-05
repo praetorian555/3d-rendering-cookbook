@@ -6,6 +6,8 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include "rndr/log.h"
+
 #include "material.h"
 #include "scene.h"
 #include "types.h"

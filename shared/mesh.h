@@ -5,8 +5,8 @@
 #include "opal/container/stack-array.h"
 #include "opal/container/string.h"
 
-#include "rndr/core/enum-flags.h"
-#include "rndr/core/graphics-types.h"
+#include "rndr/enum-flags.h"
+#include "rndr/graphics-types.h"
 
 #include "types.h"
 

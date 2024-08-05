@@ -5,9 +5,8 @@
 #include "opal/container/stack-array.h"
 #include "opal/container/string.h"
 
-#include "rndr/core/base.h"
-#include "rndr/core/enum-flags.h"
-#include "rndr/core/math.h"
+#include "rndr/enum-flags.h"
+#include "rndr/math.h"
 
 #include "material.h"
 #include "mesh.h"
@@ -82,7 +81,7 @@ struct SceneDrawData
     /** Contains all the materials. */
     Opal::Array<MaterialDescription> materials;
     /** Contains all the textures. */
-    Opal::Array<Rndr::Image> textures;
+    Opal::Array<Rndr::Texture> textures;
     /** Contains all the scene data, like hierarchy. */
     SceneDescription scene_description;
 };

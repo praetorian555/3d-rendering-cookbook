@@ -1,6 +1,6 @@
 #pragma once
 
-#include "rndr/core/base.h"
+#include "rndr/math.h"
 
 #include "mesh.h"
 
