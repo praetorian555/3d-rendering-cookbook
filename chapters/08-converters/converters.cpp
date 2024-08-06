@@ -14,10 +14,11 @@
 #include "opal/container/string.h"
 #include "opal/paths.h"
 
-#include "rndr/core/file.h"
-#include "rndr/core/render-api.h"
-#include "rndr/core/renderer-base.h"
-#include "rndr/core/window.h"
+#include "rndr/file.h"
+#include "rndr/render-api.h"
+#include "rndr/renderer-base.h"
+#include "rndr/rndr.h"
+#include "rndr/window.h"
 
 #include "assimp-helpers.h"
 #include "cube-map.h"
@@ -82,9 +83,9 @@ void Run()
         Opal::MakeDefaultScoped<Rndr::ClearRenderer>(u8"Clear", renderer_desc, Rndr::Vector4f(0.0f, 0.0f, 0.0f, 1.0f));
     const Opal::ScopePtr<Rndr::RendererBase> ui_renderer = Opal::MakeDefaultScoped<UIRenderer>(u8"UI", window, renderer_desc);
     const Opal::ScopePtr<Rndr::RendererBase> present_renderer = Opal::MakeDefaultScoped<Rndr::PresentRenderer>(u8"Present", renderer_desc);
-    renderer_manager.AddRenderer(clear_renderer.get());
-    renderer_manager.AddRenderer(ui_renderer.get());
-    renderer_manager.AddRenderer(present_renderer.get());
+    renderer_manager.AddRenderer(clear_renderer.Get());
+    renderer_manager.AddRenderer(ui_renderer.Get());
+    renderer_manager.AddRenderer(present_renderer.Get());
 
     while (!window.IsClosed())
     {
@@ -394,7 +395,7 @@ void UIRenderer::ComputeEnvironmentMap(const Opal::StringUtf8& input_path, const
 
     constexpr int32_t k_nb_monte_carlo_samples = 1024;
     if (!CubeMap::ConvolveDiffuse(input_data, input_width, input_height, k_output_width, k_output_height, output_data.GetData(),
-                                        k_nb_monte_carlo_samples))
+                                  k_nb_monte_carlo_samples))
     {
         status = OPAL_UTF8("Failed to convolve input image!");
         return;
