@@ -2,11 +2,21 @@
 
 #include <gli/gli.hpp>
 
-#include "cube-map.h"
 #include "opal/paths.h"
+#include "opal/time.h"
 
+#include "rndr/file.h"
+#include "rndr/fly-camera.h"
+#include "rndr/frames-per-second-counter.h"
+#include "rndr/input-layout-builder.h"
+#include "rndr/input.h"
+#include "rndr/render-api.h"
+#include "rndr/renderer-base.h"
 #include "rndr/rndr.h"
+#include "rndr/trace.h"
+#include "rndr/window.h"
 
+#include "cube-map.h"
 #include "scene.h"
 
 void Run();
@@ -39,7 +49,7 @@ public:
         using namespace Rndr;
 
         const Opal::StringUtf8 k_asset_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("Bistro"), OPAL_UTF8("Output")).GetValue();
+            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("Bistro"), OPAL_UTF8("OutExterior")).GetValue();
         const Opal::StringUtf8 k_scene_path = Opal::Paths::Combine(nullptr, k_asset_path, OPAL_UTF8("exterior.rndrscene")).GetValue();
         const Opal::StringUtf8 k_mesh_path = Opal::Paths::Combine(nullptr, k_asset_path, OPAL_UTF8("exterior.rndrmesh")).GetValue();
         const Opal::StringUtf8 k_mat_path = Opal::Paths::Combine(nullptr, k_asset_path, OPAL_UTF8("exterior.rndrmat")).GetValue();
@@ -51,7 +61,7 @@ public:
         }
 
         // Setup shaders
-        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("Shaders")).GetValue();
+        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("shaders")).GetValue();
         const Opal::StringUtf8 vertex_shader_code = Rndr::File::ReadShader(shader_dir, OPAL_UTF8("material-pbr.vert"));
         const Opal::StringUtf8 fragment_shader_code = Rndr::File::ReadShader(shader_dir, OPAL_UTF8("material-pbr.frag"));
         m_vertex_shader = Shader(desc.graphics_context, {.type = ShaderType::Vertex, .source = vertex_shader_code});
@@ -119,17 +129,17 @@ public:
 
         const Opal::StringUtf8 env_map_image_path =
             Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("piazza_bologni_1k.hdr")).GetValue();
-        m_env_map_image = LoadImage(ImageType::CubeMap, env_map_image_path);
+        m_env_map_image = LoadImage(TextureType::CubeMap, env_map_image_path);
         RNDR_ASSERT(m_env_map_image.IsValid());
 
         const Opal::StringUtf8 irradiance_map_image_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("piazza_bologni_1k_irradiance.hdr")).GetValue();
-        m_irradiance_map_image = LoadImage(ImageType::CubeMap, irradiance_map_image_path);
+            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("piazza_bologni_1k_irradience.hdr")).GetValue();
+        m_irradiance_map_image = LoadImage(TextureType::CubeMap, irradiance_map_image_path);
         RNDR_ASSERT(m_irradiance_map_image.IsValid());
 
         const Opal::StringUtf8 brdf_lut_image_path =
             Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("brdf-lut.ktx")).GetValue();
-        m_brdf_lut_image = LoadImage(ImageType::Image2D, brdf_lut_image_path);
+        m_brdf_lut_image = LoadImage(TextureType::Texture2D, brdf_lut_image_path);
 
         // Setup draw commands based on the mesh data
         Opal::Array<DrawIndicesData> draw_commands;
@@ -153,7 +163,7 @@ public:
 
     bool Render() override
     {
-        RNDR_TRACE_SCOPED(Mesh rendering);
+        RNDR_CPU_EVENT_SCOPED("Mesh rendering");
 
         // Rotate the mesh
         const Rndr::Matrix4x4f t = Math::Scale(0.1f);
@@ -173,7 +183,7 @@ public:
         m_camera_position = position;
     }
 
-    Rndr::Image LoadImage(Rndr::ImageType image_type, const Opal::StringUtf8& image_path)
+    Rndr::Texture LoadImage(Rndr::TextureType image_type, const Opal::StringUtf8& image_path)
     {
         using namespace Rndr;
         constexpr bool k_flip_vertically = true;
@@ -183,34 +193,36 @@ public:
         if (is_ktx)
         {
             gli::texture texture = gli::load_ktx(image_path.GetDataAs<c>());
-            const ImageDesc image_desc{.width = texture.extent().x,
-                                       .height = texture.extent().y,
-                                       .array_size = 1,
-                                       .type = image_type,
-                                       .pixel_format = Rndr::PixelFormat::R16G16_FLOAT,  // TODO: Fix this!
-                                       .use_mips = true,
-                                       .sampler = {.max_anisotropy = 16.0f,
-                                                   .address_mode_u = ImageAddressMode::Clamp,
-                                                   .address_mode_v = ImageAddressMode::Clamp,
-                                                   .address_mode_w = ImageAddressMode::Clamp}};
+            const TextureDesc image_desc{.width = texture.extent().x,
+                                         .height = texture.extent().y,
+                                         .array_size = 1,
+                                         .type = image_type,
+                                         .pixel_format = Rndr::PixelFormat::R16G16_FLOAT,  // TODO: Fix this!
+                                         .use_mips = true};
+
+            const SamplerDesc sampler_desc{.max_anisotropy = 16.0f,
+                                           .address_mode_u = ImageAddressMode::Clamp,
+                                           .address_mode_v = ImageAddressMode::Clamp,
+                                           .address_mode_w = ImageAddressMode::Clamp,
+                                           .border_color = Rndr::Colors::k_black};
             const Opal::Span<const u8> texture_data{static_cast<uint8_t*>(texture.data(0, 0, 0)), texture.size()};
-            return {m_desc.graphics_context, image_desc, texture_data};
+            return {m_desc.graphics_context, image_desc, sampler_desc, texture_data};
         }
-        if (image_type == ImageType::Image2D)
+        if (image_type == TextureType::Texture2D)
         {
             Bitmap bitmap = Rndr::File::ReadEntireImage(image_path, PixelFormat::R8G8B8A8_UNORM, k_flip_vertically);
             RNDR_ASSERT(bitmap.IsValid());
-            const ImageDesc image_desc{.width = bitmap.GetWidth(),
-                                       .height = bitmap.GetHeight(),
-                                       .array_size = 1,
-                                       .type = image_type,
-                                       .pixel_format = bitmap.GetPixelFormat(),
-                                       .use_mips = true,
-                                       .sampler = {.max_anisotropy = 16.0f}};
+            const TextureDesc image_desc{.width = bitmap.GetWidth(),
+                                         .height = bitmap.GetHeight(),
+                                         .array_size = 1,
+                                         .type = image_type,
+                                         .pixel_format = bitmap.GetPixelFormat(),
+                                         .use_mips = true};
+            const SamplerDesc sampler_desc{.max_anisotropy = 16.0f, .border_color = Rndr::Colors::k_black};
             const Opal::Span<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
-            return {m_desc.graphics_context, image_desc, bitmap_data};
+            return {m_desc.graphics_context, image_desc, sampler_desc, bitmap_data};
         }
-        if (image_type == ImageType::CubeMap)
+        if (image_type == TextureType::CubeMap)
         {
             const Bitmap equirectangular_bitmap = Rndr::File::ReadEntireImage(image_path, PixelFormat::R32G32B32_FLOAT);
             RNDR_ASSERT(equirectangular_bitmap.IsValid());
@@ -234,17 +246,18 @@ public:
                 RNDR_HALT("Failed to convert vertical cross to cube map faces!");
                 return {};
             }
-            const ImageDesc image_desc{.width = cube_map_bitmap.GetWidth(),
-                                       .height = cube_map_bitmap.GetHeight(),
-                                       .array_size = cube_map_bitmap.GetDepth(),
-                                       .type = image_type,
-                                       .pixel_format = cube_map_bitmap.GetPixelFormat(),
-                                       .use_mips = true,
-                                       .sampler = {.address_mode_u = ImageAddressMode::Clamp,
-                                                   .address_mode_v = ImageAddressMode::Clamp,
-                                                   .address_mode_w = ImageAddressMode::Clamp}};
+            const TextureDesc image_desc{.width = cube_map_bitmap.GetWidth(),
+                                         .height = cube_map_bitmap.GetHeight(),
+                                         .array_size = cube_map_bitmap.GetDepth(),
+                                         .type = image_type,
+                                         .pixel_format = cube_map_bitmap.GetPixelFormat(),
+                                         .use_mips = true};
+            const SamplerDesc sampler_desc{.address_mode_u = ImageAddressMode::Clamp,
+                                           .address_mode_v = ImageAddressMode::Clamp,
+                                           .address_mode_w = ImageAddressMode::Clamp,
+                                           .border_color = Rndr::Colors::k_black};
             const Opal::Span<const u8> bitmap_data{cube_map_bitmap.GetData(), cube_map_bitmap.GetSize3D()};
-            return {m_desc.graphics_context, image_desc, bitmap_data};
+            return {m_desc.graphics_context, image_desc, sampler_desc, bitmap_data};
         }
         return {};
     }
@@ -258,9 +271,9 @@ private:
     Rndr::Buffer m_model_transforms_buffer;
     Rndr::Buffer m_material_buffer;
 
-    Rndr::Image m_env_map_image;
-    Rndr::Image m_irradiance_map_image;
-    Rndr::Image m_brdf_lut_image;
+    Rndr::Texture m_env_map_image;
+    Rndr::Texture m_irradiance_map_image;
+    Rndr::Texture m_brdf_lut_image;
 
     Rndr::Buffer m_per_frame_buffer;
     Rndr::Pipeline m_pipeline;
@@ -305,17 +318,17 @@ void Run()
                                 .projection_desc = {.near = 0.5f, .far = 5000.0f}});
 
     Rndr::RendererManager renderer_manager;
-    renderer_manager.AddRenderer(clear_renderer.get());
-    renderer_manager.AddRenderer(mesh_renderer.get());
-    renderer_manager.AddRenderer(present_renderer.get());
+    renderer_manager.AddRenderer(clear_renderer.Get());
+    renderer_manager.AddRenderer(mesh_renderer.Get());
+    renderer_manager.AddRenderer(present_renderer.Get());
 
     Rndr::FramesPerSecondCounter fps_counter(0.1f);
-    float delta_seconds = 0.033f;
+    f32 delta_seconds = 0.033f;
     while (!window.IsClosed())
     {
-        RNDR_TRACE_SCOPED(Frame);
+        RNDR_CPU_EVENT_SCOPED("Frame");
 
-        const Rndr::Timestamp start_time = Rndr::GetTimestamp();
+        const f64 start_time = Opal::GetSeconds();
 
         fps_counter.Update(delta_seconds);
 
@@ -327,7 +340,7 @@ void Run()
 
         renderer_manager.Render();
 
-        const Rndr::Timestamp end_time = Rndr::GetTimestamp();
-        delta_seconds = static_cast<float>(Rndr::GetDuration(start_time, end_time));
+        const f64 end_time = Opal::GetSeconds();
+        delta_seconds = static_cast<f32>(start_time - end_time);
     }
 }
