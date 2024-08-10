@@ -6,6 +6,7 @@
 #include "opal/container/string.h"
 
 #include "rndr/enum-flags.h"
+#include "rndr/error-codes.h"
 #include "rndr/graphics-types.h"
 
 #include "types.h"
@@ -157,5 +158,7 @@ bool Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data);
  */
 bool GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands, const Opal::Array<MeshDrawData>& mesh_draw_data,
                      const MeshData& mesh_data);
+
+Rndr::ErrorCode AddPlaneXY(MeshData& out_mesh_data, const Rndr::Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load);
 
 }  // namespace Mesh

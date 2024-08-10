@@ -201,3 +201,79 @@ bool Mesh::GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands
     }
     return true;
 }
+
+Rndr::ErrorCode Mesh::AddPlaneXY(MeshData& out_mesh_data, const Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load)
+{
+    const Opal::StackArray<Rndr::Point3f, 4> vertices = {
+        Rndr::Point3f(center.x - scale, center.y, center.z - scale),
+        Rndr::Point3f(center.x - scale, center.y, center.z + scale),
+        Rndr::Point3f(center.x + scale, center.y, center.z + scale),
+        Rndr::Point3f(center.x + scale, center.y, center.z - scale),
+    };
+
+    const Opal::StackArray<Rndr::Vector3f, 4> normals = {
+        Rndr::Vector3f(0, 0, 1),
+        Rndr::Vector3f(0, 0, 1),
+        Rndr::Vector3f(0, 0, 1),
+        Rndr::Vector3f(0, 0, 1),
+    };
+
+    const Opal::StackArray<Rndr::Point2f, 4> uvs = {
+        Rndr::Point2f(0, 0),
+        Rndr::Point2f(0, 1),
+        Rndr::Point2f(1, 1),
+        Rndr::Point2f(1, 0),
+    };
+
+    MeshDescription mesh_desc;
+    mesh_desc.vertex_size = sizeof(Rndr::Point3f);
+
+    if (!!(attributes_to_load & MeshAttributesToLoad::LoadNormals))
+    {
+        mesh_desc.vertex_size += sizeof(Rndr::Vector3f);
+    }
+
+    if (!!(attributes_to_load & MeshAttributesToLoad::LoadUvs))
+    {
+        mesh_desc.vertex_size += sizeof(Rndr::Point2f);
+    }
+
+    mesh_desc.vertex_offset = static_cast<int64_t>(out_mesh_data.vertex_buffer_data.GetSize() / mesh_desc.vertex_size);
+    mesh_desc.index_offset = static_cast<int64_t>(out_mesh_data.index_buffer_data.GetSize() / sizeof(u32));
+    mesh_desc.vertex_count = 4;
+    mesh_desc.lod_count = 1;
+    mesh_desc.lod_offsets[0] = 0;
+    mesh_desc.lod_offsets[1] = 6;
+    mesh_desc.mesh_size = mesh_desc.vertex_count * mesh_desc.vertex_size + mesh_desc.lod_offsets[1] * sizeof(u32);
+    out_mesh_data.meshes.PushBack(mesh_desc);
+
+    for (i32 i = 0; i < 4; i++)
+    {
+        const u8* vertex_data = reinterpret_cast<const u8*>(vertices[i].data);
+        out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), vertex_data,
+                                                vertex_data + sizeof(Rndr::Point3f));
+
+        if (!!(attributes_to_load & MeshAttributesToLoad::LoadNormals))
+        {
+            const u8* normal_data = reinterpret_cast<const u8*>(normals[i].data);
+            out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), normal_data,
+                                                    normal_data + sizeof(Rndr::Vector3f));
+        }
+
+        if (!!(attributes_to_load & MeshAttributesToLoad::LoadUvs))
+        {
+            const u8* uv_data = reinterpret_cast<const u8*>(uvs[i].data);
+            out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), uv_data, uv_data + sizeof(Rndr::Point2f));
+        }
+    }
+
+    u32 vertex_base = static_cast<u32>(mesh_desc.vertex_offset);
+    const u32 indices[] = {vertex_base + 0, vertex_base + 1, vertex_base + 2, vertex_base + 2, vertex_base + 3, vertex_base + 0};
+    for (u32 i = 0; i < 6; i++)
+    {
+        out_mesh_data.index_buffer_data.Insert(out_mesh_data.index_buffer_data.ConstEnd(), reinterpret_cast<const u8*>(&indices[i]),
+                                               reinterpret_cast<const u8*>(&indices[i]) + sizeof(indices[i]));
+    }
+
+    return Rndr::ErrorCode::Success;
+}
