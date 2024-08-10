@@ -208,3 +208,7 @@ add_executable(10-scene-renderer chapters/10-scene-renderer/scene-renderer.cpp)
 target_link_libraries(10-scene-renderer PRIVATE shared)
 # Needed since warnings are in third party library
 target_link_libraries(10-scene-renderer PRIVATE rencook_options)
+
+add_executable(11-shadows chapters/11-shadows/shadows.cpp)
+target_link_libraries(11-shadows PRIVATE shared)
+target_link_libraries(11-shadows PRIVATE rencook_options rencook_warnings)
