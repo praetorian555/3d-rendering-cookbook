@@ -1,5 +1,7 @@
 #pragma once
 
+#include <imgui.h>
+
 struct ImGuiDesc
 {
     bool enable_keyboard_navigation = false;
@@ -11,6 +13,7 @@ namespace Rndr
 {
 class Window;
 class GraphicsContext;
+class Texture;
 }  // namespace Rndr
 
 /**
@@ -51,6 +54,8 @@ public:
      * @return ImGui properties.
      */
     [[nodiscard]] static const ImGuiDesc& GetProps();
+
+    static void TextureWindow(const char* title, const Rndr::Texture& texture);
 
 private:
     static ImGuiWrapper& Get();

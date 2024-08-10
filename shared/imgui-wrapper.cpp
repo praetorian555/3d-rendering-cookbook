@@ -12,9 +12,9 @@
 #include "backends/imgui_impl_opengl3.h"
 #endif
 
+#include "rndr/log.h"
 #include "rndr/render-api.h"
 #include "rndr/window.h"
-#include "rndr/log.h"
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND handle, UINT msg_code, WPARAM param_w, LPARAM param_l);
@@ -125,4 +125,17 @@ void ImGuiWrapper::EndFrame()
 const ImGuiDesc& ImGuiWrapper::GetProps()
 {
     return Get().m_desc;
+}
+
+void ImGuiWrapper::TextureWindow(const char* title,const Rndr::Texture& texture)
+{
+    ImGui::Begin(title, nullptr);
+
+    const ImVec2 vMin = ImGui::GetWindowContentRegionMin();
+    const ImVec2 vMax = ImGui::GetWindowContentRegionMax();
+
+    ImGui::Image((void*)(intptr_t)texture.GetNativeTexture(), ImVec2(vMax.x - vMin.x, vMax.y - vMin.y), ImVec2(0.0f, 1.0f),
+                 ImVec2(1.0f, 0.0f));
+
+    ImGui::End();
 }
