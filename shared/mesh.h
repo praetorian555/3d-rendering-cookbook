@@ -159,6 +159,6 @@ bool Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data);
 bool GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands, const Opal::Array<MeshDrawData>& mesh_draw_data,
                      const MeshData& mesh_data);
 
-Rndr::ErrorCode AddPlaneXY(MeshData& out_mesh_data, const Rndr::Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load);
+Rndr::ErrorCode AddPlaneXZ(MeshData& out_mesh_data, const Rndr::Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load);
 
 }  // namespace Mesh

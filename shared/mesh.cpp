@@ -202,7 +202,7 @@ bool Mesh::GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands
     return true;
 }
 
-Rndr::ErrorCode Mesh::AddPlaneXY(MeshData& out_mesh_data, const Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load)
+Rndr::ErrorCode Mesh::AddPlaneXZ(MeshData& out_mesh_data, const Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load)
 {
     const Opal::StackArray<Rndr::Point3f, 4> vertices = {
         Rndr::Point3f(center.x - scale, center.y, center.z - scale),
