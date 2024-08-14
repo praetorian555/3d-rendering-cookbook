@@ -32,11 +32,6 @@ int main()
 
 struct PerFrameData
 {
-    Rndr::Matrix4x4f view_projection;
-    Rndr::Matrix4x4f light_view_projection;
-    Rndr::Point4f camera_position;
-    Rndr::Point4f light_position;
-    Rndr::Vector4f light_angles;  // cos(inner), cos(outer), 0, 0
 };
 
 struct GameState
@@ -48,6 +43,10 @@ struct GameState
     f32 light_far = 20.0f;
     f32 light_x_angle = -1.0f;
     f32 light_y_angle = -2.0f;
+
+    // Set by shadow renderer
+    Rndr::Matrix4x4f light_clip_from_world;
+    Rndr::Point3f light_position;
 };
 
 class MeshContainer
@@ -60,7 +59,7 @@ public:
         [[maybe_unused]] bool status = AssimpHelpers::ReadMeshData(m_mesh_data, mesh_file_path, MeshAttributesToLoad::LoadAll);
         RNDR_ASSERT(status);
         Rndr::ErrorCode err;
-        err = Mesh::AddPlaneXZ(m_mesh_data, Rndr::Point3f(0.0f, 0.0f, 0.0f), 6.0f, MeshAttributesToLoad::LoadAll);
+        err = Mesh::AddPlaneXZ(m_mesh_data, Rndr::Point3f(0.0f, 0.0f, 0.0f), 20.0f, MeshAttributesToLoad::LoadAll);
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         err = m_vertex_buffer.Initialize(
@@ -73,10 +72,9 @@ public:
         m_model_matrices.PushBack(Math::Identity<f32>());
         m_model_matrices[1] = Math::Transpose(m_model_matrices[1]);
 
-        err = m_model_buffer.Initialize(m_graphics_context,
-                                        Rndr::BufferDesc{.type = Rndr::BufferType::ShaderStorage,
-                                                         .usage = Rndr::Usage::Dynamic,
-                                                         .size = sizeof(Rndr::Matrix4x4f)});
+        err = m_model_buffer.Initialize(
+            m_graphics_context,
+            Rndr::BufferDesc{.type = Rndr::BufferType::ShaderStorage, .usage = Rndr::Usage::Dynamic, .size = sizeof(Rndr::Matrix4x4f)});
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         err = m_index_buffer.Initialize(
@@ -91,6 +89,26 @@ public:
                                   .AddShaderStorage(m_model_buffer, 2)
                                   .AddIndexBuffer(m_index_buffer)
                                   .Build();
+
+        const Opal::StringUtf8 albedo_texture_path =
+            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("duck-base-color.png")).GetValue();
+        Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(albedo_texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, true);
+        RNDR_ASSERT(bitmap.IsValid());
+        err = m_albedo_texture.Initialize(
+            m_graphics_context,
+            {.width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(), .use_mips = true}, {},
+            Opal::Span<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
+        RNDR_ASSERT(err == Rndr::ErrorCode::Success);
+
+        const Opal::StringUtf8 brick_texture_path =
+            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("brick-wall.jpg")).GetValue();
+        bitmap = Rndr::File::ReadEntireImage(brick_texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, true);
+        RNDR_ASSERT(bitmap.IsValid());
+        err = m_brick_texture.Initialize(
+            m_graphics_context,
+            {.width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(), .use_mips = true}, {},
+            Opal::Span<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
+        RNDR_ASSERT(err == Rndr::ErrorCode::Success);
     }
 
     [[nodiscard]] const Rndr::InputLayoutDesc& GetInputLayoutDesc() const { return m_input_layout_desc; }
@@ -98,8 +116,10 @@ public:
     void Draw()
     {
         m_graphics_context->UpdateBuffer(m_model_buffer, Opal::AsBytes(m_model_matrices[0]));
+        m_graphics_context->Bind(m_albedo_texture, 0);
         m_graphics_context->DrawIndices(Rndr::PrimitiveTopology::Triangle, m_mesh_data.meshes[0].lod_offsets[1], 1, 0);
         m_graphics_context->UpdateBuffer(m_model_buffer, Opal::AsBytes(m_model_matrices[1]));
+        m_graphics_context->Bind(m_brick_texture, 0);
         m_graphics_context->DrawIndices(Rndr::PrimitiveTopology::Triangle, m_mesh_data.meshes[1].lod_offsets[1], 1,
                                         static_cast<i32>(m_mesh_data.meshes[1].index_offset));
     }
@@ -110,17 +130,14 @@ private:
     Rndr::Buffer m_vertex_buffer;
     Rndr::Buffer m_model_buffer;
     Rndr::Buffer m_index_buffer;
+    Rndr::Texture m_albedo_texture;
+    Rndr::Texture m_brick_texture;
     Rndr::InputLayoutDesc m_input_layout_desc;
     Opal::Array<Rndr::Matrix4x4f> m_model_matrices;
 };
 
 class ShadowRenderer : public Rndr::RendererBase
 {
-    struct PerFrameData
-    {
-        Rndr::Matrix4x4f view_projection;
-    };
-
 public:
     ShadowRenderer(const Opal::StringUtf8& name, const Rndr::RendererBaseDesc& desc, MeshContainer* mesh_container, GameState* game_state)
         : RendererBase(name, desc), m_mesh_container(mesh_container), m_game_state(game_state)
@@ -170,6 +187,8 @@ public:
         const Rndr::Matrix4x4f light_projection =
             Math::Perspective_RH_N1(m_game_state->light_fov, 1.0f, m_game_state->light_near, m_game_state->light_far);
         Rndr::Matrix4x4f mvp = light_projection * light_view;
+        m_game_state->light_clip_from_world = mvp;
+        m_game_state->light_position = light_position;
         mvp = Math::Transpose(mvp);  // OpenGL expects column-major matrices
 
         m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(mvp));
@@ -197,6 +216,80 @@ private:
 
 class SceneRenderer : public Rndr::RendererBase
 {
+public:
+    SceneRenderer(const Opal::StringUtf8& name, const Rndr::RendererBaseDesc& desc, MeshContainer* mesh_container, GameState* game_state,
+                  const Rndr::Texture* shadow_texture, Rndr::ProjectionCamera* camera)
+        : RendererBase(name, desc),
+          m_mesh_container(mesh_container),
+          m_game_state(game_state),
+          m_camera(camera),
+          m_shadow_texture(shadow_texture)
+    {
+        // Setup shaders
+        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("shaders")).GetValue();
+        const Opal::StringUtf8 vertex_shader_contents = Rndr::File::ReadShader(shader_dir, u8"scene-shadow.vert");
+        const Opal::StringUtf8 pixel_shader_contents = Rndr::File::ReadShader(shader_dir, u8"scene-shadow.frag");
+        Rndr::ErrorCode err =
+            m_vertex_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents});
+        RNDR_ASSERT(err == Rndr::ErrorCode::Success);
+        err = m_pixel_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Fragment, .source = pixel_shader_contents});
+        RNDR_ASSERT(err == Rndr::ErrorCode::Success);
+
+        // Setup pipeline
+        m_pipeline = Rndr::Pipeline(m_desc.graphics_context, {
+                                                                 .vertex_shader = &m_vertex_shader,
+                                                                 .pixel_shader = &m_pixel_shader,
+                                                                 .input_layout = m_mesh_container->GetInputLayoutDesc(),
+                                                                 .rasterizer = {.fill_mode = Rndr::FillMode::Solid},
+                                                                 .depth_stencil = {.is_depth_enabled = true},
+                                                             });
+        RNDR_ASSERT(m_pipeline.IsValid());
+
+        m_per_frame_buffer.Initialize(
+            m_desc.graphics_context,
+            Rndr::BufferDesc{.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = sizeof(PerFrameData)});
+    }
+
+    struct PerFrameData
+    {
+        Rndr::Matrix4x4f clip_from_world;
+        Rndr::Matrix4x4f light_clip_from_world;
+        Rndr::Point4f camera_position;
+        Rndr::Vector4f light_angles;  // cos(inner), cos(outer), 0, 0
+        Rndr::Point4f light_position;
+    };
+
+    bool Render() override
+    {
+        PerFrameData per_frame_data;
+        per_frame_data.clip_from_world = Math::Transpose(m_camera->FromWorldToNDC());
+        per_frame_data.light_clip_from_world = Math::Transpose(m_game_state->light_clip_from_world);
+        per_frame_data.camera_position =
+            Rndr::Point4f(m_camera->GetPosition().x, m_camera->GetPosition().y, m_camera->GetPosition().z, 1.0f);
+        per_frame_data.light_angles =
+            Rndr::Vector4f(Math::Cos(Math::Radians(0.5f * m_game_state->light_fov)),
+                           Math::Cos(Math::Radians(0.5f * (m_game_state->light_fov - m_game_state->light_inner_angle))), 1.0f, 1.0f);
+        per_frame_data.light_position =
+            Rndr::Point4f(m_game_state->light_position.x, m_game_state->light_position.y, m_game_state->light_position.z, 1.0f);
+
+        m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(per_frame_data));
+        m_desc.graphics_context->BindDefaultFrameBuffer();
+        m_desc.graphics_context->Bind(m_pipeline);
+        m_desc.graphics_context->Bind(m_per_frame_buffer, 0);
+        m_desc.graphics_context->Bind(*m_shadow_texture, 1);
+        m_mesh_container->Draw();
+        return true;
+    }
+
+private:
+    Opal::Ref<MeshContainer> m_mesh_container;
+    Opal::Ref<GameState> m_game_state;
+    Opal::Ref<Rndr::ProjectionCamera> m_camera;
+    Rndr::Shader m_vertex_shader;
+    Rndr::Shader m_pixel_shader;
+    Rndr::Pipeline m_pipeline;
+    Rndr::Buffer m_per_frame_buffer;
+    Opal::Ref<const Rndr::Texture> m_shadow_texture;
 };
 
 class PostProcessRenderer : public Rndr::RendererBase
@@ -327,7 +420,14 @@ void Run()
     MeshContainer mesh_container(&graphics_context);
     GameState game_state;
 
-    constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_white;
+    Rndr::FlyCamera fly_camera(&window, &Rndr::InputSystem::GetCurrentContext(),
+                               {.start_position = Rndr::Point3f(30.0f, 15.0f, 0.0f),
+                                .start_rotation = Rndr::Rotatorf(30.0f, 90.0f, 0.0f),
+                                .movement_speed = 100,
+                                .rotation_speed = 200,
+                                .projection_desc = {.near = 0.5f, .far = 5000.0f}});
+
+    constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_black;
     const Opal::ScopePtr<Rndr::RendererBase> clear_renderer =
         Opal::MakeDefaultScoped<Rndr::ClearRenderer>(u8"Clear the screen", renderer_desc, k_clear_color);
     const Opal::ScopePtr<Rndr::RendererBase> shadow_renderer =
@@ -335,22 +435,19 @@ void Run()
     //    const Opal::ScopePtr<Rndr::RendererBase> post_process_renderer = Opal::MakeDefaultScoped<PostProcessRenderer>(renderer_desc,
     //    true);
     const ShadowRenderer* shadow_renderer_ptr = static_cast<ShadowRenderer*>(shadow_renderer.Get());
+    const Opal::ScopePtr<Rndr::RendererBase> scene_renderer =
+        Opal::MakeDefaultScoped<SceneRenderer>(u8"Render the scene", renderer_desc, &mesh_container, &game_state,
+                                               &shadow_renderer_ptr->GetFrameBuffer()->GetDepthStencilAttachment(), &fly_camera);
     const Opal::ScopePtr<Rndr::RendererBase> ui_renderer =
         Opal::MakeDefaultScoped<UIRenderer>(renderer_desc, window, &game_state, shadow_renderer_ptr->GetFrameBuffer());
     const Opal::ScopePtr<Rndr::RendererBase> present_renderer =
         Opal::MakeDefaultScoped<Rndr::PresentRenderer>(u8"Present the back buffer", renderer_desc);
 
-    Rndr::FlyCamera fly_camera(&window, &Rndr::InputSystem::GetCurrentContext(),
-                               {.start_position = Rndr::Point3f(-20.0f, 15.0f, 20.0f),
-                                .movement_speed = 100,
-                                .rotation_speed = 200,
-                                .projection_desc = {.near = 0.5f, .far = 5000.0f}});
-
     Rndr::RendererManager renderer_manager;
     renderer_manager.AddRenderer(clear_renderer.Get());
     renderer_manager.AddRenderer(shadow_renderer.Get());
+    renderer_manager.AddRenderer(scene_renderer.Get());
     renderer_manager.AddRenderer(ui_renderer.Get());
-    //    renderer_manager.AddRenderer(post_process_renderer.Get());
     renderer_manager.AddRenderer(present_renderer.Get());
 
     Rndr::FramesPerSecondCounter fps_counter(0.1f);
