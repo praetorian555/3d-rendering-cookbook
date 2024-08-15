@@ -212,3 +212,7 @@ target_link_libraries(10-scene-renderer PRIVATE rencook_options)
 add_executable(11-shadows chapters/11-shadows/shadows.cpp)
 target_link_libraries(11-shadows PRIVATE shared)
 target_link_libraries(11-shadows PRIVATE rencook_options rencook_warnings)
+
+add_executable(xx-game-animation chapters/xx-game-animation/game-animation.cpp)
+target_link_libraries(xx-game-animation PRIVATE shared)
+target_link_libraries(xx-game-animation PRIVATE rencook_options rencook_warnings)
