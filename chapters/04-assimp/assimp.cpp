@@ -154,12 +154,12 @@ void Run()
 
         graphics_context.ClearColor(k_clear_color);
         graphics_context.ClearDepth(1.0f);
-        graphics_context.Bind(swap_chain);
-        graphics_context.Bind(solid_pipeline);
-        graphics_context.Bind(per_frame_buffer, 0);
+        graphics_context.BindSwapChainFrameBuffer(swap_chain);
+        graphics_context.BindPipeline(solid_pipeline);
+        graphics_context.BindBuffer(per_frame_buffer, 0);
         graphics_context.DrawVertices(Rndr::PrimitiveTopology::Triangle, vertex_count);
 
-        graphics_context.Bind(wireframe_pipeline);
+        graphics_context.BindPipeline(wireframe_pipeline);
         per_frame_data.is_wire_frame = 1;
         graphics_context.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));
         graphics_context.DrawVertices(Rndr::PrimitiveTopology::Triangle, vertex_count);

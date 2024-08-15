@@ -110,14 +110,14 @@ void Run()
     render_solid_command_list.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));
     render_solid_command_list.ClearColor(k_clear_color);
     render_solid_command_list.ClearDepth(1.0f);
-    render_solid_command_list.Bind(swap_chain);
-    render_solid_command_list.Bind(solid_pipeline);
-    render_solid_command_list.BindConstantBuffer(per_frame_buffer, 0);
+    render_solid_command_list.BindSwapChainFrameBuffer(swap_chain);
+    render_solid_command_list.BindPipeline(solid_pipeline);
+    render_solid_command_list.BindBuffer(per_frame_buffer, 0);
     render_solid_command_list.DrawVertices(Rndr::PrimitiveTopology::Triangle, k_index_count);
 
     Rndr::CommandList render_wireframe_command_list(graphics_context);
     render_wireframe_command_list.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));
-    render_wireframe_command_list.Bind(wireframe_pipeline);
+    render_wireframe_command_list.BindPipeline(wireframe_pipeline);
     render_wireframe_command_list.DrawVertices(Rndr::PrimitiveTopology::Triangle, k_index_count);
     render_wireframe_command_list.Present(swap_chain);
 

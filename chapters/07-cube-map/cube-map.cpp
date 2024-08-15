@@ -178,10 +178,10 @@ void Run()
     RNDR_ASSERT(cube_map_pipeline.IsValid());
 
     // Bind stuff that stay the same across the frames.
-    graphics_context.Bind(swap_chain);
-    graphics_context.Bind(per_frame_buffer, 0);
-    graphics_context.Bind(mesh_albedo, 0);
-    graphics_context.Bind(cube_map_image, 1);
+    graphics_context.BindSwapChainFrameBuffer(swap_chain);
+    graphics_context.BindBuffer(per_frame_buffer, 0);
+    graphics_context.BindTexture(mesh_albedo, 0);
+    graphics_context.BindTexture(cube_map_image, 1);
 
     const int32_t index_count = static_cast<int32_t>(indices.GetSize());
     while (!window.IsClosed())
@@ -204,7 +204,7 @@ void Run()
 
         // Draw the model.
         graphics_context.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));
-        graphics_context.Bind(model_pipeline);
+        graphics_context.BindPipeline(model_pipeline);
         graphics_context.DrawIndices(Rndr::PrimitiveTopology::Triangle, index_count);
 
         // Draw cube map.
@@ -214,7 +214,7 @@ void Run()
         per_frame_data.model = cube_map_model;
         per_frame_data.camera_pos = Rndr::Vector4f();
         graphics_context.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));
-        graphics_context.Bind(cube_map_pipeline);
+        graphics_context.BindPipeline(cube_map_pipeline);
         graphics_context.DrawVertices(Rndr::PrimitiveTopology::Triangle, 36);
 
         graphics_context.Present(swap_chain);

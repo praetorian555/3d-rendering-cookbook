@@ -1,6 +1,6 @@
+#include "rndr/render-api.h"
 #include "rndr/rndr.h"
 #include "rndr/window.h"
-#include "rndr/render-api.h"
 
 #include "types.h"
 
@@ -66,8 +66,8 @@ void Run()
     window.on_resize.Bind([&swap_chain](i32 width, i32 height) { swap_chain.SetSize(width, height); });
 
     Rndr::CommandList command_list(graphics_context);
-    command_list.Bind(swap_chain);
-    command_list.Bind(pipeline);
+    command_list.BindSwapChainFrameBuffer(swap_chain);
+    command_list.BindPipeline(pipeline);
     command_list.ClearColor(k_clear_color);
     command_list.DrawVertices(Rndr::PrimitiveTopology::Triangle, 3);
     command_list.Present(swap_chain);

@@ -152,12 +152,12 @@ public:
 
         // Create a command list
         m_command_list = CommandList(m_desc.graphics_context);
-        m_command_list.Bind(*m_desc.swap_chain);
-        m_command_list.Bind(m_pipeline);
-        m_command_list.BindConstantBuffer(m_per_frame_buffer, 0);
-        m_command_list.Bind(m_env_map_image, 5);
-        m_command_list.Bind(m_irradiance_map_image, 6);
-        m_command_list.Bind(m_brdf_lut_image, 7);
+        m_command_list.BindSwapChainFrameBuffer(*m_desc.swap_chain);
+        m_command_list.BindPipeline(m_pipeline);
+        m_command_list.BindBuffer(m_per_frame_buffer, 0);
+        m_command_list.BindTexture(m_env_map_image, 5);
+        m_command_list.BindTexture(m_irradiance_map_image, 6);
+        m_command_list.BindTexture(m_brdf_lut_image, 7);
         m_command_list.DrawIndicesMulti(m_pipeline, PrimitiveTopology::Triangle, draw_commands_span);
     }
 
@@ -341,6 +341,6 @@ void Run()
         renderer_manager.Render();
 
         const f64 end_time = Opal::GetSeconds();
-        delta_seconds = static_cast<f32>(start_time - end_time);
+        delta_seconds = static_cast<f32>(end_time - start_time);
     }
 }

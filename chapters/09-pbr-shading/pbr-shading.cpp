@@ -141,16 +141,16 @@ public:
         RNDR_ASSERT(m_pipeline.IsValid());
 
         m_command_list = Rndr::CommandList(desc.graphics_context);
-        m_command_list.BindConstantBuffer(m_per_frame_buffer, 0);
-        m_command_list.Bind(m_ao_image, 0);
-        m_command_list.Bind(m_emissive_image, 1);
-        m_command_list.Bind(m_albedo_image, 2);
-        m_command_list.Bind(m_metallic_roughness_image, 3);
-        m_command_list.Bind(m_normal_image, 4);
-        m_command_list.Bind(m_env_map_image, 5);
-        m_command_list.Bind(m_irradiance_map_image, 6);
-        m_command_list.Bind(m_brdf_lut_image, 7);
-        m_command_list.Bind(m_pipeline);
+        m_command_list.BindBuffer(m_per_frame_buffer, 0);
+        m_command_list.BindTexture(m_ao_image, 0);
+        m_command_list.BindTexture(m_emissive_image, 1);
+        m_command_list.BindTexture(m_albedo_image, 2);
+        m_command_list.BindTexture(m_metallic_roughness_image, 3);
+        m_command_list.BindTexture(m_normal_image, 4);
+        m_command_list.BindTexture(m_env_map_image, 5);
+        m_command_list.BindTexture(m_irradiance_map_image, 6);
+        m_command_list.BindTexture(m_brdf_lut_image, 7);
+        m_command_list.BindPipeline(m_pipeline);
         const MeshDescription mesh_desc = m_mesh_data.meshes[0];
         m_command_list.DrawIndices(Rndr::PrimitiveTopology::Triangle, mesh_desc.GetLodIndicesCount(0), 1, mesh_desc.index_offset);
     }

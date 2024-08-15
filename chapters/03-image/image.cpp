@@ -179,10 +179,10 @@ void Run()
 
         graphics_context.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));
 
-        graphics_context.Bind(swap_chain);
-        graphics_context.Bind(pipeline);
-        graphics_context.Bind(per_frame_buffer, 0);
-        graphics_context.Bind(image, 0);
+        graphics_context.BindSwapChainFrameBuffer(swap_chain);
+        graphics_context.BindPipeline(pipeline);
+        graphics_context.BindBuffer(per_frame_buffer, 0);
+        graphics_context.BindTexture(image, 0);
         graphics_context.ClearColor(k_clear_color);
         graphics_context.DrawVertices(Rndr::PrimitiveTopology::Triangle, 3);
 

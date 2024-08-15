@@ -338,8 +338,8 @@ void UIRenderer::ProcessScene(const Opal::StringUtf8& in_mesh_path, const Opal::
 void UIRenderer::ComputeBrdfLut(const Opal::StringUtf8& output_path, Opal::StringUtf8& status)
 {
     RNDR_UNUSED(output_path);
-    m_desc.graphics_context->Bind(m_brdf_lut_buffer, 0);
-    m_desc.graphics_context->Bind(m_brdf_lut_pipeline);
+    m_desc.graphics_context->BindBuffer(m_brdf_lut_buffer, 0);
+    m_desc.graphics_context->BindPipeline(m_brdf_lut_pipeline);
     if (!m_desc.graphics_context->DispatchCompute(m_brdf_lut_width, m_brdf_lut_height, 1))
     {
         status = OPAL_UTF8("Failed to dispatch compute shader!");

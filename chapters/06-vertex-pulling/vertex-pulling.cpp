@@ -132,10 +132,10 @@ void Run()
     window.on_resize.Bind([&swap_chain](int32_t width, int32_t height) { swap_chain.SetSize(width, height); });
 
     // Bind stuff that stay the same across the frames.
-    graphics_context.Bind(swap_chain);
-    graphics_context.Bind(solid_pipeline);
-    graphics_context.Bind(per_frame_buffer, 0);
-    graphics_context.Bind(mesh_albedo, 0);
+    graphics_context.BindSwapChainFrameBuffer(swap_chain);
+    graphics_context.BindPipeline(solid_pipeline);
+    graphics_context.BindBuffer(per_frame_buffer, 0);
+    graphics_context.BindTexture(mesh_albedo, 0);
 
     ImGuiWrapper::Init(window, graphics_context);
 

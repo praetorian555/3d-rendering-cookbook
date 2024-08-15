@@ -116,10 +116,10 @@ public:
     void Draw()
     {
         m_graphics_context->UpdateBuffer(m_model_buffer, Opal::AsBytes(m_model_matrices[0]));
-        m_graphics_context->Bind(m_albedo_texture, 0);
+        m_graphics_context->BindTexture(m_albedo_texture, 0);
         m_graphics_context->DrawIndices(Rndr::PrimitiveTopology::Triangle, m_mesh_data.meshes[0].lod_offsets[1], 1, 0);
         m_graphics_context->UpdateBuffer(m_model_buffer, Opal::AsBytes(m_model_matrices[1]));
-        m_graphics_context->Bind(m_brick_texture, 0);
+        m_graphics_context->BindTexture(m_brick_texture, 0);
         m_graphics_context->DrawIndices(Rndr::PrimitiveTopology::Triangle, m_mesh_data.meshes[1].lod_offsets[1], 1,
                                         static_cast<i32>(m_mesh_data.meshes[1].index_offset));
     }
@@ -194,11 +194,11 @@ public:
         m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(mvp));
         m_desc.graphics_context->ClearFrameBufferColorAttachment(m_frame_buffer, 0, Rndr::Colors::k_black);
         m_desc.graphics_context->ClearFrameBufferDepthStencilAttachment(m_frame_buffer, 1.0f, 0);
-        m_desc.graphics_context->Bind(m_frame_buffer);
-        m_desc.graphics_context->Bind(m_pipeline);
-        m_desc.graphics_context->Bind(m_per_frame_buffer, 0);
+        m_desc.graphics_context->BindFrameBuffer(m_frame_buffer);
+        m_desc.graphics_context->BindPipeline(m_pipeline);
+        m_desc.graphics_context->BindBuffer(m_per_frame_buffer, 0);
         m_mesh_container->Draw();
-        m_desc.graphics_context->BindDefaultFrameBuffer();
+        m_desc.graphics_context->BindSwapChainFrameBuffer(m_desc.swap_chain);
         return true;
     }
 
@@ -273,10 +273,10 @@ public:
             Rndr::Point4f(m_game_state->light_position.x, m_game_state->light_position.y, m_game_state->light_position.z, 1.0f);
 
         m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(per_frame_data));
-        m_desc.graphics_context->BindDefaultFrameBuffer();
-        m_desc.graphics_context->Bind(m_pipeline);
-        m_desc.graphics_context->Bind(m_per_frame_buffer, 0);
-        m_desc.graphics_context->Bind(*m_shadow_texture, 1);
+        m_desc.graphics_context->BindSwapChainFrameBuffer(m_desc.swap_chain);
+        m_desc.graphics_context->BindPipeline(m_pipeline);
+        m_desc.graphics_context->BindBuffer(m_per_frame_buffer, 0);
+        m_desc.graphics_context->BindTexture(*m_shadow_texture, 1);
         m_mesh_container->Draw();
         return true;
     }
@@ -338,7 +338,7 @@ public:
 
     bool Render() override
     {
-        m_desc.graphics_context->Bind(m_pipeline);
+        m_desc.graphics_context->BindPipeline(m_pipeline);
         if (m_use_full_screen_triangle)
         {
             m_desc.graphics_context->DrawVertices(Rndr::PrimitiveTopology::Triangle, 3);
@@ -422,7 +422,6 @@ void Run()
 
     Rndr::FlyCamera fly_camera(&window, &Rndr::InputSystem::GetCurrentContext(),
                                {.start_position = Rndr::Point3f(30.0f, 15.0f, 0.0f),
-                                .start_rotation = Rndr::Rotatorf(30.0f, 90.0f, 0.0f),
                                 .movement_speed = 100,
                                 .rotation_speed = 200,
                                 .projection_desc = {.near = 0.5f, .far = 5000.0f}});
@@ -466,6 +465,6 @@ void Run()
         renderer_manager.Render();
 
         const f64 end_time = Opal::GetSeconds();
-        delta_seconds = static_cast<f32>(start_time - end_time);
+        delta_seconds = static_cast<f32>(end_time - start_time);
     }
 }
