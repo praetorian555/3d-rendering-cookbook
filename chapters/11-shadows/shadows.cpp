@@ -14,6 +14,7 @@
 #include "rndr/renderer-base.h"
 #include "rndr/rndr.h"
 #include "rndr/window.h"
+#include "rndr/trace.h"
 
 #include "assimp-helpers.h"
 #include "imgui-wrapper.h"
@@ -180,6 +181,8 @@ public:
 
     bool Render() override
     {
+        RNDR_GPU_EVENT_SCOPED("ShadowRenderer::Render");
+
         const Rndr::Point3f light_position = Math::RotateY(Math::Degrees(m_game_state->light_y_angle)) *
                                              Math::RotateX(Math::Degrees(m_game_state->light_x_angle)) *
                                              Rndr::Point3f(0, 0, m_game_state->light_distance);
@@ -261,6 +264,8 @@ public:
 
     bool Render() override
     {
+        RNDR_GPU_EVENT_SCOPED("SceneRenderer::Render");
+
         PerFrameData per_frame_data;
         per_frame_data.clip_from_world = Math::Transpose(m_camera->FromWorldToNDC());
         per_frame_data.light_clip_from_world = Math::Transpose(m_game_state->light_clip_from_world);
@@ -372,6 +377,8 @@ public:
 
     bool Render() override
     {
+        RNDR_GPU_EVENT_SCOPED("UIRenderer::Render");
+
         ImGuiWrapper::StartFrame();
 
         ImGui::Begin("Control", nullptr);
