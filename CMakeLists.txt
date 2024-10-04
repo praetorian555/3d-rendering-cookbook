@@ -156,6 +156,7 @@ set(SHARED_FILES
         shared/scene.h
         shared/assimp-helpers.h
         shared/assimp-helpers.cpp
+        shared/animation.h
         shared/stb_image_resize2.h
         shared/stb_image.h
         shared/stb_image_write.h

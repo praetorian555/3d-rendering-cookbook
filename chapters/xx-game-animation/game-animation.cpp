@@ -41,6 +41,9 @@ public:
             RNDR_HALT("");
         }
 
+        SkeletalMeshData skeletal_mesh;
+        AssimpHelpers::ReadAnimationDataFromAssimp(skeletal_mesh, model_path);
+
         Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, true);
         RNDR_ASSERT(bitmap.IsValid());
 

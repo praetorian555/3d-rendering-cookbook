@@ -2,6 +2,7 @@
 
 #include "rndr/math.h"
 
+#include "animation.h"
 #include "mesh.h"
 
 struct aiMaterial;
@@ -63,5 +64,7 @@ bool ReadMaterialDescription(MaterialDescription& out_description, Opal::Array<O
  * @return True if the scene description was successfully read, false otherwise.
  */
 bool ReadSceneDescription(SceneDescription& out_scene_description, const aiScene& ai_scene);
+
+Rndr::ErrorCode ReadAnimationDataFromAssimp(SkeletalMeshData& out_skeletal_mesh, const Opal::StringUtf8& mesh_file_path);
 
 }  // namespace AssimpHelpers

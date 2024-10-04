@@ -1,5 +1,7 @@
 #include "assimp-helpers.h"
 
+#include <stack>
+
 #include <assimp/cimport.h>
 #include <assimp/material.h>
 #include <assimp/pbrmaterial.h>
@@ -31,9 +33,9 @@ bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scen
         return false;
     }
 
-    const bool should_load_normals = static_cast<bool>(attributes_to_load & MeshAttributesToLoad::LoadNormals);
-    const bool should_load_uvs = static_cast<bool>(attributes_to_load & MeshAttributesToLoad::LoadUvs);
-    uint32_t vertex_size = sizeof(Rndr::Point3f);
+    const bool should_load_normals = !!(attributes_to_load & MeshAttributesToLoad::LoadNormals);
+    const bool should_load_uvs = !!(attributes_to_load & MeshAttributesToLoad::LoadUvs);
+    u32 vertex_size = sizeof(Rndr::Point3f);
     if (should_load_normals)
     {
         vertex_size += sizeof(Rndr::Normal3f);
@@ -43,13 +45,13 @@ bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scen
         vertex_size += sizeof(Rndr::Point2f);
     }
 
-    uint32_t vertex_offset = 0;
-    uint32_t index_offset = 0;
-    for (uint32_t mesh_index = 0; mesh_index < ai_scene.mNumMeshes; ++mesh_index)
+    u32 vertex_offset = 0;
+    u32 index_offset = 0;
+    for (u32 mesh_index = 0; mesh_index < ai_scene.mNumMeshes; ++mesh_index)
     {
         const aiMesh* const ai_mesh = ai_scene.mMeshes[mesh_index];
 
-        for (uint32_t i = 0; i < ai_mesh->mNumVertices; ++i)
+        for (u32 i = 0; i < ai_mesh->mNumVertices; ++i)
         {
             Rndr::Point3f position(ai_mesh->mVertices[i].x, ai_mesh->mVertices[i].y, ai_mesh->mVertices[i].z);
             out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), reinterpret_cast<u8*>(position.data),
@@ -72,22 +74,22 @@ bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scen
             }
         }
 
-        Opal::Array<Opal::Array<uint32_t>> lods(MeshDescription::k_max_lods);
-        for (uint32_t i = 0; i < ai_mesh->mNumFaces; ++i)
+        Opal::Array<Opal::Array<u32>> lods(MeshDescription::k_max_lods);
+        for (u32 i = 0; i < ai_mesh->mNumFaces; ++i)
         {
             const aiFace& face = ai_mesh->mFaces[i];
             if (face.mNumIndices != 3)
             {
                 continue;
             }
-            for (uint32_t j = 0; j < face.mNumIndices; ++j)
+            for (u32 j = 0; j < face.mNumIndices; ++j)
             {
                 lods[0].PushBack(face.mIndices[j]);
             }
         }
 
         out_mesh_data.index_buffer_data.Insert(out_mesh_data.index_buffer_data.ConstEnd(), reinterpret_cast<uint8_t*>(lods[0].GetData()),
-                                               reinterpret_cast<uint8_t*>(lods[0].GetData()) + lods[0].GetSize() * sizeof(uint32_t));
+                                               reinterpret_cast<uint8_t*>(lods[0].GetData()) + lods[0].GetSize() * sizeof(u32));
 
         // TODO: Generate LODs
 
@@ -98,15 +100,15 @@ bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scen
         mesh_desc.index_offset = index_offset;
         mesh_desc.lod_count = 1;
         mesh_desc.lod_offsets[0] = 0;
-        mesh_desc.lod_offsets[1] = static_cast<uint32_t>(lods[0].GetSize());
-        mesh_desc.mesh_size = ai_mesh->mNumVertices * vertex_size + static_cast<uint32_t>(lods[0].GetSize()) * sizeof(uint32_t);
+        mesh_desc.lod_offsets[1] = static_cast<u32>(lods[0].GetSize());
+        mesh_desc.mesh_size = ai_mesh->mNumVertices * vertex_size + static_cast<u32>(lods[0].GetSize()) * sizeof(u32);
 
         // TODO: Add material info
 
         out_mesh_data.meshes.PushBack(mesh_desc);
 
         vertex_offset += ai_mesh->mNumVertices;
-        index_offset += static_cast<uint32_t>(lods[0].GetSize());
+        index_offset += static_cast<u32>(lods[0].GetSize());
     }
 
     Mesh::UpdateBoundingBoxes(out_mesh_data);
@@ -116,10 +118,10 @@ bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scen
 
 bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const Opal::StringUtf8& mesh_file_path, MeshAttributesToLoad attributes_to_load)
 {
-    constexpr uint32_t k_ai_process_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals |
-                                            aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes | aiProcess_ImproveCacheLocality |
-                                            aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData |
-                                            aiProcess_GenUVCoords;
+    constexpr u32 k_ai_process_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals |
+                                       aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes | aiProcess_ImproveCacheLocality |
+                                       aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData |
+                                       aiProcess_GenUVCoords;
 
     const aiScene* scene = aiImportFile(mesh_file_path.GetDataAs<c>(), k_ai_process_flags);
     if (scene == nullptr || !scene->HasMeshes())
@@ -144,7 +146,7 @@ namespace
 ImageId AddUnique(Opal::Array<Opal::StringUtf8>& files, const char* path)
 {
     const Opal::StringUtf8 path_utf8(reinterpret_cast<const c8*>(path));
-    for (uint32_t i = 0; i < files.GetSize(); ++i)
+    for (u32 i = 0; i < files.GetSize(); ++i)
     {
         if (files[i] == path_utf8)
         {
@@ -319,7 +321,7 @@ bool AssimpHelpers::ReadSceneDescription(SceneDescription& out_scene_description
 {
     Traverse(out_scene_description, &ai_scene, ai_scene.mRootNode, Scene::k_invalid_node_id, 0);
 
-    for (uint32_t i = 0; i < ai_scene.mNumMaterials; ++i)
+    for (u32 i = 0; i < ai_scene.mNumMaterials; ++i)
     {
         aiMaterial* ai_material = ai_scene.mMaterials[i];
         const Opal::StringUtf8 material_name = reinterpret_cast<const c8*>(ai_material->GetName().C_Str());
@@ -327,6 +329,153 @@ bool AssimpHelpers::ReadSceneDescription(SceneDescription& out_scene_description
     }
 
     return true;
+}
+Rndr::ErrorCode AssimpHelpers::ReadAnimationDataFromAssimp(SkeletalMeshData& out_skeletal_mesh, const Opal::StringUtf8& mesh_file_path)
+{
+    constexpr u32 k_ai_process_flags = aiProcess_JoinIdenticalVertices | aiProcess_Triangulate | aiProcess_GenSmoothNormals |
+                                       aiProcess_LimitBoneWeights | aiProcess_SplitLargeMeshes | aiProcess_ImproveCacheLocality |
+                                       aiProcess_RemoveRedundantMaterials | aiProcess_FindDegenerates | aiProcess_FindInvalidData |
+                                       aiProcess_GenUVCoords;
+
+    const aiScene* ai_scene = aiImportFile(mesh_file_path.GetDataAs<c>(), k_ai_process_flags);
+    if (ai_scene == nullptr || !ai_scene->HasMeshes())
+    {
+        RNDR_LOG_ERROR("Failed to load mesh from file with error: %s", aiGetErrorString());
+        return Rndr::ErrorCode::InvalidArgument;
+    }
+
+    if (!ai_scene->HasMeshes())
+    {
+        RNDR_LOG_ERROR("No meshes in the assimp scene!");
+        return Rndr::ErrorCode::InvalidArgument;
+    }
+
+    struct Node
+    {
+        aiNode* ai_node;
+        i32 depth = 0;
+    };
+    std::stack<Node> nodes;
+    nodes.push({ai_scene->mRootNode});
+    while (!nodes.empty())
+    {
+        Node node = nodes.top();
+        nodes.pop();
+        const Opal::StringUtf8 prefix(node.depth, '\t');
+        RNDR_LOG_INFO("%sNode: %s", prefix.GetDataAs<c>(), node.ai_node->mName.C_Str());
+        for (u32 i = 0; i < node.ai_node->mNumChildren; ++i)
+        {
+            nodes.push({node.ai_node->mChildren[i], node.depth + 1});
+        }
+    }
+
+    constexpr u32 k_max_bone_influence_count = 4;
+
+    u32 vertex_size = sizeof(Rndr::Point3f);
+    vertex_size += sizeof(Rndr::Normal3f);
+    vertex_size += sizeof(Rndr::Point2f);
+    vertex_size += sizeof(i32) * k_max_bone_influence_count;
+    vertex_size += sizeof(float) * k_max_bone_influence_count;
+
+    u32 vertex_offset = 0;
+    u32 index_offset = 0;
+    for (u32 mesh_index = 0; mesh_index < ai_scene->mNumMeshes; ++mesh_index)
+    {
+        const aiMesh* const ai_mesh = ai_scene->mMeshes[mesh_index];
+
+        struct VertexByBoneInfluence
+        {
+            Opal::StackArray<i32, k_max_bone_influence_count> bone_ids;
+            Opal::StackArray<f32, k_max_bone_influence_count> bone_weights;
+        };
+        VertexByBoneInfluence default_vertex_by_bone_influence;
+        default_vertex_by_bone_influence.bone_ids.fill(-1);
+        default_vertex_by_bone_influence.bone_weights.fill(0.0f);
+        Opal::Array<VertexByBoneInfluence> vertex_by_bone_influences(ai_mesh->mNumVertices, default_vertex_by_bone_influence);
+
+        for (i32 bone_id = 0; bone_id < static_cast<i32>(ai_mesh->mNumBones); ++bone_id)
+        {
+            const aiBone& ai_bone = *ai_mesh->mBones[bone_id];
+            for (i32 weight_index = 0; weight_index < static_cast<i32>(ai_bone.mNumWeights); ++weight_index)
+            {
+                const aiVertexWeight& ai_weight = ai_bone.mWeights[weight_index];
+                VertexByBoneInfluence& vertex_by_bone_influence = vertex_by_bone_influences[ai_weight.mVertexId];
+                for (i32 i = 0; i < k_max_bone_influence_count; ++i)
+                {
+                    if (vertex_by_bone_influence.bone_ids[i] == -1)
+                    {
+                        vertex_by_bone_influence.bone_ids[i] = bone_id;
+                        vertex_by_bone_influence.bone_weights[i] = ai_weight.mWeight;
+                        break;
+                    }
+                }
+            }
+        }
+
+        for (u32 i = 0; i < ai_mesh->mNumVertices; ++i)
+        {
+            Rndr::Point3f position(ai_mesh->mVertices[i].x, ai_mesh->mVertices[i].y, ai_mesh->mVertices[i].z);
+            out_skeletal_mesh.vertex_buffer_data.Insert(out_skeletal_mesh.vertex_buffer_data.ConstEnd(),
+                                                        reinterpret_cast<u8*>(position.data),
+                                                        reinterpret_cast<u8*>(position.data) + sizeof(position));
+
+            RNDR_ASSERT(ai_mesh->HasNormals());
+            Rndr::Normal3f normal(ai_mesh->mNormals[i].x, ai_mesh->mNormals[i].y, ai_mesh->mNormals[i].z);
+            out_skeletal_mesh.vertex_buffer_data.Insert(out_skeletal_mesh.vertex_buffer_data.ConstEnd(),
+                                                        reinterpret_cast<uint8_t*>(normal.data),
+                                                        reinterpret_cast<uint8_t*>(normal.data) + sizeof(normal));
+
+            const aiVector3D ai_uv = ai_mesh->HasTextureCoords(0) ? ai_mesh->mTextureCoords[0][i] : aiVector3D();
+            Rndr::Point2f uv(ai_uv.x, ai_uv.y);
+            out_skeletal_mesh.vertex_buffer_data.Insert(out_skeletal_mesh.vertex_buffer_data.ConstEnd(),
+                                                        reinterpret_cast<uint8_t*>(uv.data),
+                                                        reinterpret_cast<uint8_t*>(uv.data) + sizeof(uv));
+
+            VertexByBoneInfluence& vertex_by_bone_influence = vertex_by_bone_influences[i];
+            out_skeletal_mesh.vertex_buffer_data.Insert(
+                out_skeletal_mesh.vertex_buffer_data.ConstEnd(), reinterpret_cast<uint8_t*>(&vertex_by_bone_influence),
+                reinterpret_cast<uint8_t*>(&vertex_by_bone_influence) + sizeof(vertex_by_bone_influences));
+        }
+
+        Opal::Array<Opal::Array<u32>> lods(MeshDescription::k_max_lods);
+        for (u32 i = 0; i < ai_mesh->mNumFaces; ++i)
+        {
+            const aiFace& face = ai_mesh->mFaces[i];
+            if (face.mNumIndices != 3)
+            {
+                continue;
+            }
+            for (u32 j = 0; j < face.mNumIndices; ++j)
+            {
+                lods[0].PushBack(face.mIndices[j]);
+            }
+        }
+
+        out_skeletal_mesh.index_buffer_data.Insert(out_skeletal_mesh.index_buffer_data.ConstEnd(),
+                                                   reinterpret_cast<uint8_t*>(lods[0].GetData()),
+                                                   reinterpret_cast<uint8_t*>(lods[0].GetData()) + lods[0].GetSize() * sizeof(u32));
+
+        // TODO: Generate LODs
+
+        SkeletalMeshDescription mesh_desc;
+        mesh_desc.vertex_count = ai_mesh->mNumVertices;
+        mesh_desc.vertex_offset = vertex_offset;
+        mesh_desc.vertex_size = vertex_size;
+        mesh_desc.index_offset = index_offset;
+        mesh_desc.lod_count = 1;
+        mesh_desc.lod_offsets[0] = 0;
+        mesh_desc.lod_offsets[1] = static_cast<u32>(lods[0].GetSize());
+        mesh_desc.mesh_size = ai_mesh->mNumVertices * vertex_size + static_cast<u32>(lods[0].GetSize()) * sizeof(u32);
+
+        // TODO: Add material info
+
+        out_skeletal_mesh.meshes.PushBack(mesh_desc);
+
+        vertex_offset += ai_mesh->mNumVertices;
+        index_offset += static_cast<u32>(lods[0].GetSize());
+    }
+
+    return Rndr::ErrorCode::Success;
 }
 
 namespace
@@ -348,11 +497,11 @@ void Traverse(SceneDescription& out_scene, const aiScene* ai_scene, const aiNode
     }
     Scene::SetNodeName(out_scene, new_node_id, node_name);
 
-    for (uint32_t i = 0; i < ai_node->mNumMeshes; ++i)
+    for (u32 i = 0; i < ai_node->mNumMeshes; ++i)
     {
         const Scene::NodeId new_sub_node_id = Scene::AddNode(out_scene, new_node_id, level + 1);
         Scene::SetNodeName(out_scene, new_sub_node_id, node_name + OPAL_UTF8("_Mesh_") + NumberToStr(i));
-        const uint32_t mesh_id = ai_node->mMeshes[i];
+        const u32 mesh_id = ai_node->mMeshes[i];
         Scene::SetNodeMeshId(out_scene, new_sub_node_id, mesh_id);
         Scene::SetNodeMaterialId(out_scene, new_sub_node_id, ai_scene->mMeshes[mesh_id]->mMaterialIndex);
 
@@ -363,7 +512,7 @@ void Traverse(SceneDescription& out_scene, const aiScene* ai_scene, const aiNode
     out_scene.local_transforms[new_node_id] = AssimpHelpers::Convert(ai_node->mTransformation);
     out_scene.world_transforms[new_node_id] = Rndr::Matrix4x4f(1.0f);
 
-    for (uint32_t i = 0; i < ai_node->mNumChildren; ++i)
+    for (u32 i = 0; i < ai_node->mNumChildren; ++i)
     {
         Traverse(out_scene, ai_scene, ai_node->mChildren[i], new_node_id, level + 1);
     }
