@@ -19,24 +19,32 @@ int main()
     return 0;
 }
 
+struct VulkanRendererDesc
+{
+    bool enable_validation_layers = false;
+    Opal::Span<Opal::StringUtf8> required_instance_extensions;
+};
+
 struct VulkanRenderer
 {
-    VulkanRenderer(Opal::Span<Opal::StringUtf8> required_instance_extensions = {});
+    VulkanRenderer(const VulkanRendererDesc& desc = {});
     ~VulkanRenderer();
 
     Opal::Array<VkExtensionProperties> GetSupportedInstanceExtensions();
 
 private:
-    void CreateInstance(Opal::Span<Opal::StringUtf8> required_instance_extensions);
+    void CreateInstance();
 
 private:
+    VulkanRendererDesc m_desc;
     VkInstance m_instance;
 };
 
 void Run()
 {
     Rndr::Window window(Rndr::WindowDesc{.width = 800, .height = 600, .name = "Vulkan Triangle Example"});
-    VulkanRenderer renderer;
+    VulkanRendererDesc renderer_desc{.enable_validation_layers = true};
+    VulkanRenderer renderer(renderer_desc);
 
     f32 delta_seconds = 1 / 60.0f;
     while (!window.IsClosed())
@@ -51,17 +59,23 @@ void Run()
     }
 }
 
-VulkanRenderer::VulkanRenderer(Opal::Span<Opal::StringUtf8> required_instance_extensions)
+VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 {
+    CreateInstance();
+}
+
+void VulkanRenderer::CreateInstance()
+{
+    // Check if all the requested instance extensions are supported
     Opal::Array<VkExtensionProperties> supported_extensions = GetSupportedInstanceExtensions();
-    for (const Opal::StringUtf8& required_extension_name : required_instance_extensions)
+    for (const Opal::StringUtf8& required_extension_name : m_desc.required_instance_extensions)
     {
         bool is_found = false;
         for (const VkExtensionProperties& supported_extension : supported_extensions)
         {
             auto compare_result =
                 Opal::Compare(required_extension_name, 0, required_extension_name.GetSize(), (const c8*)supported_extension.extensionName);
-            if (compare_result.GetValue() == 0)
+            if (compare_result.HasValue() && compare_result.GetValue() == 0)
             {
                 is_found = true;
                 break;
@@ -74,11 +88,35 @@ VulkanRenderer::VulkanRenderer(Opal::Span<Opal::StringUtf8> required_instance_ex
         }
     }
 
-    CreateInstance(required_instance_extensions);
-}
+    Opal::Array<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
+    if (m_desc.enable_validation_layers)
+    {
+        u32 available_layer_count = 0;
+        vkEnumerateInstanceLayerProperties(&available_layer_count, nullptr);
 
-void VulkanRenderer::CreateInstance(Opal::Span<Opal::StringUtf8> required_instance_extensions)
-{
+        Opal::Array<VkLayerProperties> available_layers;
+        available_layers.Resize(available_layer_count);
+        vkEnumerateInstanceLayerProperties(&available_layer_count, available_layers.GetData());
+
+        for (const char* validation_layer_name : validation_layers)
+        {
+            bool is_found = false;
+            for (const VkLayerProperties& available_layer : available_layers)
+            {
+                if (strcmp(validation_layer_name, available_layer.layerName) == 0)
+                {
+                    is_found = true;
+                    break;
+                }
+            }
+            if (!is_found)
+            {
+                RNDR_ASSERT(false);
+                return;
+            }
+        }
+    }
+
     VkApplicationInfo app_info{};
     app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     app_info.pApplicationName = "Vulkan Triangle Example";
@@ -88,12 +126,12 @@ void VulkanRenderer::CreateInstance(Opal::Span<Opal::StringUtf8> required_instan
     app_info.apiVersion = VK_API_VERSION_1_0;
 
     Opal::Array<const char*> enabled_extension_names;
-    if (required_instance_extensions.GetSize() > 0)
+    if (m_desc.required_instance_extensions.GetSize() > 0)
     {
-        enabled_extension_names.Resize(required_instance_extensions.GetSize());
-        for (int i = 0; i < required_instance_extensions.GetSize(); ++i)
+        enabled_extension_names.Resize(m_desc.required_instance_extensions.GetSize());
+        for (int i = 0; i < m_desc.required_instance_extensions.GetSize(); ++i)
         {
-            enabled_extension_names[i] = (const char*)required_instance_extensions[i].GetData();
+            enabled_extension_names[i] = (const char*)m_desc.required_instance_extensions[i].GetData();
         }
     }
 
@@ -102,7 +140,15 @@ void VulkanRenderer::CreateInstance(Opal::Span<Opal::StringUtf8> required_instan
     create_info.pApplicationInfo = &app_info;
     create_info.enabledExtensionCount = static_cast<u32>(enabled_extension_names.GetSize());
     create_info.ppEnabledExtensionNames = enabled_extension_names.GetData();
-    create_info.enabledLayerCount = 0;
+    if (m_desc.enable_validation_layers)
+    {
+        create_info.enabledLayerCount = static_cast<u32>(validation_layers.GetSize());
+        create_info.ppEnabledLayerNames = validation_layers.GetData();
+    }
+    else
+    {
+        create_info.enabledLayerCount = 0;
+    }
 
     VkResult vk_result = vkCreateInstance(&create_info, nullptr, &m_instance);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
