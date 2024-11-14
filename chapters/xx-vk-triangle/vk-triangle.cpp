@@ -30,14 +30,18 @@ struct VulkanRenderer
     VulkanRenderer(const VulkanRendererDesc& desc = {});
     ~VulkanRenderer();
 
-    Opal::Array<VkExtensionProperties> GetSupportedInstanceExtensions();
+    Opal::Array<const char*> GetRequiredInstanceExtensions();
+
+    static Opal::Array<VkExtensionProperties> GetSupportedInstanceExtensions();
 
 private:
     void CreateInstance();
+    void SetupDebugMessanger();
 
 private:
     VulkanRendererDesc m_desc;
     VkInstance m_instance;
+    VkDebugUtilsMessengerEXT m_debug_messenger;
 };
 
 void Run()
@@ -59,6 +63,17 @@ void Run()
     }
 }
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                                                    VkDebugUtilsMessageTypeFlagsEXT messageType,
+                                                    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+{
+    RNDR_UNUSED(messageSeverity);
+    RNDR_UNUSED(messageType);
+    RNDR_UNUSED(pUserData);
+    RNDR_LOG_INFO("Validation Layer: %s", pCallbackData->pMessage);
+    return VK_FALSE;
+}
+
 VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 {
     CreateInstance();
@@ -67,15 +82,14 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 void VulkanRenderer::CreateInstance()
 {
     // Check if all the requested instance extensions are supported
+    Opal::Array<const char*> required_extensions = GetRequiredInstanceExtensions();
     Opal::Array<VkExtensionProperties> supported_extensions = GetSupportedInstanceExtensions();
-    for (const Opal::StringUtf8& required_extension_name : m_desc.required_instance_extensions)
+    for (const char* required_extension_name : required_extensions)
     {
         bool is_found = false;
         for (const VkExtensionProperties& supported_extension : supported_extensions)
         {
-            auto compare_result =
-                Opal::Compare(required_extension_name, 0, required_extension_name.GetSize(), (const c8*)supported_extension.extensionName);
-            if (compare_result.HasValue() && compare_result.GetValue() == 0)
+            if (strcmp(required_extension_name, supported_extension.extensionName) == 0)
             {
                 is_found = true;
                 break;
@@ -88,6 +102,7 @@ void VulkanRenderer::CreateInstance()
         }
     }
 
+    // Check if validation layers are available
     Opal::Array<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
     if (m_desc.enable_validation_layers)
     {
@@ -125,21 +140,11 @@ void VulkanRenderer::CreateInstance()
     app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     app_info.apiVersion = VK_API_VERSION_1_0;
 
-    Opal::Array<const char*> enabled_extension_names;
-    if (m_desc.required_instance_extensions.GetSize() > 0)
-    {
-        enabled_extension_names.Resize(m_desc.required_instance_extensions.GetSize());
-        for (int i = 0; i < m_desc.required_instance_extensions.GetSize(); ++i)
-        {
-            enabled_extension_names[i] = (const char*)m_desc.required_instance_extensions[i].GetData();
-        }
-    }
-
     VkInstanceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     create_info.pApplicationInfo = &app_info;
-    create_info.enabledExtensionCount = static_cast<u32>(enabled_extension_names.GetSize());
-    create_info.ppEnabledExtensionNames = enabled_extension_names.GetData();
+    create_info.enabledExtensionCount = static_cast<u32>(required_extensions.GetSize());
+    create_info.ppEnabledExtensionNames = required_extensions.GetData();
     if (m_desc.enable_validation_layers)
     {
         create_info.enabledLayerCount = static_cast<u32>(validation_layers.GetSize());
@@ -154,9 +159,40 @@ void VulkanRenderer::CreateInstance()
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 }
 
+void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
+{
+    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (func != nullptr)
+    {
+        func(instance, debugMessenger, pAllocator);
+    }
+}
+
 VulkanRenderer::~VulkanRenderer()
 {
+    if (m_desc.enable_validation_layers)
+    {
+        DestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
+    }
     vkDestroyInstance(m_instance, nullptr);
+}
+
+Opal::Array<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
+{
+    Opal::Array<const char*> required_extension_names;
+    if (m_desc.required_instance_extensions.GetSize() > 0)
+    {
+        required_extension_names.Resize(m_desc.required_instance_extensions.GetSize());
+        for (int i = 0; i < m_desc.required_instance_extensions.GetSize(); ++i)
+        {
+            required_extension_names[i] = (const char*)m_desc.required_instance_extensions[i].GetData();
+        }
+    }
+    if (m_desc.enable_validation_layers)
+    {
+        required_extension_names.PushBack(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
+    return required_extension_names;
 }
 
 Opal::Array<VkExtensionProperties> VulkanRenderer::GetSupportedInstanceExtensions()
@@ -172,4 +208,38 @@ Opal::Array<VkExtensionProperties> VulkanRenderer::GetSupportedInstanceExtension
     extensions.Resize(count);
     vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.GetData());
     return extensions;
+}
+
+VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
+                                      const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
+{
+    auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    if (func != nullptr)
+    {
+        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+    }
+    else
+    {
+        return VK_ERROR_EXTENSION_NOT_PRESENT;
+    }
+}
+
+void VulkanRenderer::SetupDebugMessanger()
+{
+    if (!m_desc.enable_validation_layers)
+    {
+        return;
+    }
+
+    VkDebugUtilsMessengerCreateInfoEXT create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    create_info.pfnUserCallback = DebugCallback;
+    create_info.pUserData = nullptr;
+
+    VkResult result = CreateDebugUtilsMessengerEXT(m_instance, &create_info, nullptr, &m_debug_messenger);
+    RNDR_ASSERT(result == VK_SUCCESS);
 }
