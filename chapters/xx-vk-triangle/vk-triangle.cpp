@@ -43,6 +43,13 @@ struct VulkanRenderer
         std::optional<u32> present_family;
     };
 
+    struct SwapChainSupportDetails
+    {
+        VkSurfaceCapabilitiesKHR capabilities;
+        Opal::Array<VkSurfaceFormatKHR> formats;
+        Opal::Array<VkPresentModeKHR> present_modes;
+    };
+
     VulkanRenderer(const VulkanRendererDesc& desc = {});
     ~VulkanRenderer();
 
@@ -59,6 +66,11 @@ private:
     QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device);
     void CreateLogicalDevice();
     bool CheckDeviceExtensionSupport(const VkPhysicalDevice& device);
+    SwapChainSupportDetails QuerySwapChainSupport(const VkPhysicalDevice& device);
+    VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const Opal::Array<VkSurfaceFormatKHR>& available_formats);
+    VkPresentModeKHR ChooseSwapPresentMode(const Opal::Array<VkPresentModeKHR>& available_present_modes);
+    VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
+    void CreateSwapChain();
 
 private:
     VulkanRendererDesc m_desc;
@@ -69,6 +81,10 @@ private:
     VkDevice m_device = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_present_queue = VK_NULL_HANDLE;
+    VkSwapchainKHR m_swap_chain = VK_NULL_HANDLE;
+    Opal::Array<VkImage> m_swap_chain_images;
+    VkFormat m_swap_chain_image_format;
+    VkExtent2D m_swap_chain_extent;
 
     Opal::Array<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
     Opal::Array<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -120,10 +136,12 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
     CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
+    CreateSwapChain();
 }
 
 VulkanRenderer::~VulkanRenderer()
 {
+    vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
     vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     if (m_desc.enable_validation_layers)
@@ -331,8 +349,26 @@ bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
     }
 
     QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
-    return queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value() &&
-           CheckDeviceExtensionSupport(device);
+    bool are_queue_families_present = queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value();
+    if (!are_queue_families_present)
+    {
+        return false;
+    }
+
+    bool extensions_supported = CheckDeviceExtensionSupport(device);
+    if (!extensions_supported)
+    {
+        return false;
+    }
+
+    SwapChainSupportDetails swap_chain_details = QuerySwapChainSupport(device);
+    bool is_swap_chain_adequate = !swap_chain_details.formats.IsEmpty() && !swap_chain_details.present_modes.IsEmpty();
+    if (!is_swap_chain_adequate)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhysicalDevice& device)
@@ -440,4 +476,125 @@ bool VulkanRenderer::CheckDeviceExtensionSupport(const VkPhysicalDevice& device)
         }
     }
     return true;
+}
+
+VulkanRenderer::SwapChainSupportDetails VulkanRenderer::QuerySwapChainSupport(const VkPhysicalDevice& device)
+{
+    SwapChainSupportDetails details;
+
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_surface, &details.capabilities);
+
+    u32 format_count = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, nullptr);
+    if (format_count > 0)
+    {
+        details.formats.Resize(format_count);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, details.formats.GetData());
+    }
+
+    u32 presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, nullptr);
+    if (presentModeCount != 0)
+    {
+        details.present_modes.Resize(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, details.present_modes.GetData());
+    }
+
+    return details;
+}
+
+VkSurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(const Opal::Array<VkSurfaceFormatKHR>& available_formats)
+{
+    RNDR_ASSERT(available_formats.GetSize() > 0);
+    for (const VkSurfaceFormatKHR& format : available_formats)
+    {
+        if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+        {
+            return format;
+        }
+    }
+    return available_formats[0];
+}
+
+VkPresentModeKHR VulkanRenderer::ChooseSwapPresentMode(const Opal::Array<VkPresentModeKHR>& available_present_modes)
+{
+    for (const VkPresentModeKHR& present_mode : available_present_modes)
+    {
+        if (present_mode == VK_PRESENT_MODE_MAILBOX_KHR)
+        {
+            return present_mode;
+        }
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+VkExtent2D VulkanRenderer::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
+{
+    if (capabilities.currentExtent.width != UINT32_MAX)
+    {
+        return capabilities.currentExtent;
+    }
+
+    Rndr::Vector2f size = m_desc.window->GetSize();
+    VkExtent2D actual_extent = {static_cast<u32>(size.x), static_cast<u32>(size.y)};
+    actual_extent.width = Math::Clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    actual_extent.height = Math::Clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+
+    return actual_extent;
+}
+
+void VulkanRenderer::CreateSwapChain()
+{
+    SwapChainSupportDetails swap_chain_support = QuerySwapChainSupport(m_physical_device);
+    VkSurfaceFormatKHR surface_format = ChooseSwapSurfaceFormat(swap_chain_support.formats);
+    VkPresentModeKHR present_mode = ChooseSwapPresentMode(swap_chain_support.present_modes);
+    VkExtent2D extent = ChooseSwapExtent(swap_chain_support.capabilities);
+
+    u32 image_count = swap_chain_support.capabilities.minImageCount + 1;
+    if (swap_chain_support.capabilities.maxImageCount > 0 && image_count > swap_chain_support.capabilities.maxImageCount)
+    {
+        image_count = swap_chain_support.capabilities.maxImageCount;
+    }
+
+    VkSwapchainCreateInfoKHR create_info{};
+    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    create_info.surface = m_surface;
+    create_info.minImageCount = image_count;
+    create_info.imageFormat = surface_format.format;
+    create_info.imageColorSpace = surface_format.colorSpace;
+    create_info.imageExtent = extent;
+    create_info.imageArrayLayers = 1;
+    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    QueueFamilyIndices indices = FindQueueFamilies(m_physical_device);
+    u32 queue_family_indices[] = {indices.graphics_family.value(), indices.present_family.value()};
+    if (indices.graphics_family != indices.present_family)
+    {
+        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = queue_family_indices;
+    }
+    else
+    {
+        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        create_info.queueFamilyIndexCount = 0;
+        create_info.pQueueFamilyIndices = nullptr;
+    }
+
+    create_info.preTransform = swap_chain_support.capabilities.currentTransform;
+    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    create_info.presentMode = present_mode;
+    // If set to VK_TRUE it means that we don't care about the color of the pixels if they are occluded by other window.
+    create_info.clipped = VK_TRUE;
+    create_info.oldSwapchain = VK_NULL_HANDLE;
+
+    [[maybe_unused]] VkResult vk_result = vkCreateSwapchainKHR(m_device, &create_info, nullptr, &m_swap_chain);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+
+    vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, nullptr);
+    m_swap_chain_images.Resize(image_count);
+    vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, m_swap_chain_images.GetData());
+
+    m_swap_chain_image_format = surface_format.format;
+    m_swap_chain_extent = extent;
 }
