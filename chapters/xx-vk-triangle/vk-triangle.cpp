@@ -71,6 +71,7 @@ private:
     VkPresentModeKHR ChooseSwapPresentMode(const Opal::Array<VkPresentModeKHR>& available_present_modes);
     VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     void CreateSwapChain();
+    void CreateImageViews();
 
 private:
     VulkanRendererDesc m_desc;
@@ -85,6 +86,7 @@ private:
     Opal::Array<VkImage> m_swap_chain_images;
     VkFormat m_swap_chain_image_format;
     VkExtent2D m_swap_chain_extent;
+    Opal::Array<VkImageView> m_swap_chain_image_views;
 
     Opal::Array<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
     Opal::Array<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -141,6 +143,10 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 
 VulkanRenderer::~VulkanRenderer()
 {
+    for (const VkImageView& image_view : m_swap_chain_image_views)
+    {
+        vkDestroyImageView(m_device, image_view, nullptr);
+    }
     vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
     vkDestroyDevice(m_device, nullptr);
     vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
@@ -597,4 +603,29 @@ void VulkanRenderer::CreateSwapChain()
 
     m_swap_chain_image_format = surface_format.format;
     m_swap_chain_extent = extent;
+}
+
+void VulkanRenderer::CreateImageViews()
+{
+    m_swap_chain_image_views.Resize(m_swap_chain_images.GetSize());
+    for (u32 i = 0; i < m_swap_chain_image_views.GetSize(); ++i)
+    {
+        VkImageViewCreateInfo create_info{};
+        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        create_info.image = m_swap_chain_images[i];
+        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        create_info.format = m_swap_chain_image_format;
+        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        create_info.subresourceRange.baseMipLevel = 0;
+        create_info.subresourceRange.levelCount = 1;
+        create_info.subresourceRange.baseArrayLayer = 0;
+        create_info.subresourceRange.layerCount = 1;
+
+        [[maybe_unused]] VkResult vk_result = vkCreateImageView(m_device, &create_info, nullptr, &m_swap_chain_image_views[i]);
+        RNDR_ASSERT(vk_result == VK_SUCCESS);
+    }
 }
