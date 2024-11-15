@@ -54,8 +54,8 @@ bool ReadMeshData(MeshData& out_mesh_data, const Opal::StringUtf8& mesh_file_pat
  * @param ai_material Assimp material to read from.
  * @return True if the material description was successfully read, false otherwise.
  */
-bool ReadMaterialDescription(MaterialDescription& out_description, Opal::Array<Opal::StringUtf8>& out_texture_paths,
-                             Opal::Array<Opal::StringUtf8>& out_opacity_maps, const aiMaterial& ai_material);
+bool ReadMaterialDescription(MaterialDescription& out_description, Opal::DynamicArray<Opal::StringUtf8>& out_texture_paths,
+                             Opal::DynamicArray<Opal::StringUtf8>& out_opacity_maps, const aiMaterial& ai_material);
 
 /**
  * Reads scene description from the Assimp scene.

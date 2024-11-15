@@ -48,11 +48,10 @@ public:
     {
         using namespace Rndr;
 
-        const Opal::StringUtf8 k_asset_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("Bistro"), OPAL_UTF8("OutExterior")).GetValue();
-        const Opal::StringUtf8 k_scene_path = Opal::Paths::Combine(nullptr, k_asset_path, OPAL_UTF8("exterior.rndrscene")).GetValue();
-        const Opal::StringUtf8 k_mesh_path = Opal::Paths::Combine(nullptr, k_asset_path, OPAL_UTF8("exterior.rndrmesh")).GetValue();
-        const Opal::StringUtf8 k_mat_path = Opal::Paths::Combine(nullptr, k_asset_path, OPAL_UTF8("exterior.rndrmat")).GetValue();
+        const Opal::StringUtf8 k_asset_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "Bistro", "OutExterior").GetValue();
+        const Opal::StringUtf8 k_scene_path = Opal::Paths::Combine(nullptr, k_asset_path, "exterior.rndrscene").GetValue();
+        const Opal::StringUtf8 k_mesh_path = Opal::Paths::Combine(nullptr, k_asset_path, "exterior.rndrmesh").GetValue();
+        const Opal::StringUtf8 k_mat_path = Opal::Paths::Combine(nullptr, k_asset_path, "exterior.rndrmat").GetValue();
         const bool is_data_loaded = Scene::ReadScene(m_scene_data, k_scene_path, k_mesh_path, k_mat_path, desc.graphics_context);
         if (!is_data_loaded)
         {
@@ -61,13 +60,13 @@ public:
         }
 
         // Setup shaders
-        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("shaders")).GetValue();
-        const Opal::StringUtf8 vertex_shader_code = Rndr::File::ReadShader(shader_dir, OPAL_UTF8("material-pbr.vert"));
-        const Opal::StringUtf8 fragment_shader_code = Rndr::File::ReadShader(shader_dir, OPAL_UTF8("material-pbr.frag"));
+        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
+        const Opal::StringUtf8 vertex_shader_code = Rndr::File::ReadShader(shader_dir, "material-pbr.vert");
+        const Opal::StringUtf8 fragment_shader_code = Rndr::File::ReadShader(shader_dir, "material-pbr.frag");
         m_vertex_shader = Shader(desc.graphics_context, {.type = ShaderType::Vertex, .source = vertex_shader_code});
         RNDR_ASSERT(m_vertex_shader.IsValid());
         m_pixel_shader =
-            Shader(desc.graphics_context, {.type = ShaderType::Fragment, .source = fragment_shader_code, .defines = {u8"USE_PBR"}});
+            Shader(desc.graphics_context, {.type = ShaderType::Fragment, .source = fragment_shader_code, .defines = {"USE_PBR"}});
         RNDR_ASSERT(m_pixel_shader.IsValid());
 
         // Setup vertex buffer
@@ -88,7 +87,7 @@ public:
         RNDR_ASSERT(m_index_buffer.IsValid());
 
         // Setup model transforms buffer
-        Opal::Array<ModelData> model_transforms_data(m_scene_data.shapes.GetSize());
+        Opal::DynamicArray<ModelData> model_transforms_data(m_scene_data.shapes.GetSize());
         for (int i = 0; i < m_scene_data.shapes.GetSize(); i++)
         {
             const MeshDrawData& shape = m_scene_data.shapes[i];
@@ -96,11 +95,11 @@ public:
             const Matrix4x4f normal_transform = Math::Transpose(Math::Inverse(model_transform));
             model_transforms_data[i] = {.model_transform = model_transform, .normal_transform = normal_transform};
         }
-        m_model_transforms_buffer =
-            Buffer(desc.graphics_context, Opal::Span<const ModelData>(model_transforms_data), BufferType::ShaderStorage, Usage::Dynamic);
+        m_model_transforms_buffer = Buffer(desc.graphics_context, Opal::ArrayView<const ModelData>(model_transforms_data),
+                                           BufferType::ShaderStorage, Usage::Dynamic);
         RNDR_ASSERT(m_model_transforms_buffer.IsValid());
 
-        m_material_buffer = Buffer(desc.graphics_context, Opal::Span<const MaterialDescription>(m_scene_data.materials),
+        m_material_buffer = Buffer(desc.graphics_context, Opal::ArrayView<const MaterialDescription>(m_scene_data.materials),
                                    BufferType::ShaderStorage, Usage::Dynamic);
         RNDR_ASSERT(m_material_buffer.IsValid());
 
@@ -127,28 +126,26 @@ public:
                                                       .depth_stencil = {.is_depth_enabled = true}});
         RNDR_ASSERT(m_pipeline.IsValid());
 
-        const Opal::StringUtf8 env_map_image_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("piazza_bologni_1k.hdr")).GetValue();
+        const Opal::StringUtf8 env_map_image_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "piazza_bologni_1k.hdr").GetValue();
         m_env_map_image = LoadImage(TextureType::CubeMap, env_map_image_path);
         RNDR_ASSERT(m_env_map_image.IsValid());
 
         const Opal::StringUtf8 irradiance_map_image_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("piazza_bologni_1k_irradience.hdr")).GetValue();
+            Opal::Paths::Combine(nullptr, ASSETS_ROOT, "piazza_bologni_1k_irradience.hdr").GetValue();
         m_irradiance_map_image = LoadImage(TextureType::CubeMap, irradiance_map_image_path);
         RNDR_ASSERT(m_irradiance_map_image.IsValid());
 
-        const Opal::StringUtf8 brdf_lut_image_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("brdf-lut.ktx")).GetValue();
+        const Opal::StringUtf8 brdf_lut_image_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "brdf-lut.ktx").GetValue();
         m_brdf_lut_image = LoadImage(TextureType::Texture2D, brdf_lut_image_path);
 
         // Setup draw commands based on the mesh data
-        Opal::Array<DrawIndicesData> draw_commands;
+        Opal::DynamicArray<DrawIndicesData> draw_commands;
         if (!Mesh::GetDrawCommands(draw_commands, m_scene_data.shapes, m_scene_data.mesh_data))
         {
             RNDR_HALT("Failed to get draw commands from mesh data!");
             return;
         }
-        const Opal::Span<DrawIndicesData> draw_commands_span(draw_commands);
+        const Opal::ArrayView<DrawIndicesData> draw_commands_span(draw_commands);
 
         // Create a command list
         m_command_list = CommandList(m_desc.graphics_context);
@@ -188,11 +185,11 @@ public:
         using namespace Rndr;
         constexpr bool k_flip_vertically = true;
 
-        const bool is_ktx = Opal::Paths::GetExtension(image_path).GetValue() == u8".ktx";
+        const bool is_ktx = Opal::Paths::GetExtension(image_path).GetValue() == ".ktx";
 
         if (is_ktx)
         {
-            gli::texture texture = gli::load_ktx(image_path.GetDataAs<c>());
+            gli::texture texture = gli::load_ktx(image_path.GetData());
             const TextureDesc image_desc{.width = texture.extent().x,
                                          .height = texture.extent().y,
                                          .array_size = 1,
@@ -205,7 +202,7 @@ public:
                                            .address_mode_v = ImageAddressMode::Clamp,
                                            .address_mode_w = ImageAddressMode::Clamp,
                                            .border_color = Rndr::Colors::k_black};
-            const Opal::Span<const u8> texture_data{static_cast<uint8_t*>(texture.data(0, 0, 0)), texture.size()};
+            const Opal::ArrayView<const u8> texture_data{static_cast<uint8_t*>(texture.data(0, 0, 0)), texture.size()};
             return {m_desc.graphics_context, image_desc, sampler_desc, texture_data};
         }
         if (image_type == TextureType::Texture2D)
@@ -219,7 +216,7 @@ public:
                                          .pixel_format = bitmap.GetPixelFormat(),
                                          .use_mips = true};
             const SamplerDesc sampler_desc{.max_anisotropy = 16.0f, .border_color = Rndr::Colors::k_black};
-            const Opal::Span<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
+            const Opal::ArrayView<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
             return {m_desc.graphics_context, image_desc, sampler_desc, bitmap_data};
         }
         if (image_type == TextureType::CubeMap)
@@ -256,7 +253,7 @@ public:
                                            .address_mode_v = ImageAddressMode::Clamp,
                                            .address_mode_w = ImageAddressMode::Clamp,
                                            .border_color = Rndr::Colors::k_black};
-            const Opal::Span<const u8> bitmap_data{cube_map_bitmap.GetData(), cube_map_bitmap.GetSize3D()};
+            const Opal::ArrayView<const u8> bitmap_data{cube_map_bitmap.GetData(), cube_map_bitmap.GetSize3D()};
             return {m_desc.graphics_context, image_desc, sampler_desc, bitmap_data};
         }
         return {};
@@ -294,22 +291,22 @@ void Run()
 
     window.on_resize.Bind([&swap_chain](int32_t width, int32_t height) { swap_chain.SetSize(width, height); });
 
-    Opal::Array<Rndr::InputBinding> exit_bindings;
+    Opal::DynamicArray<Rndr::InputBinding> exit_bindings;
     exit_bindings.PushBack({Rndr::InputPrimitive::Keyboard_Esc, Rndr::InputTrigger::ButtonReleased});
     Rndr::InputSystem::GetCurrentContext().AddAction(
-        Rndr::InputAction(u8"Exit"),
+        Rndr::InputAction("Exit"),
         Rndr::InputActionData{.callback = [&window](Rndr::InputPrimitive, Rndr::InputTrigger, float) { window.Close(); },
                               .native_window = window.GetNativeWindowHandle(),
-                              .bindings = Opal::Span<Rndr::InputBinding>(exit_bindings)});
+                              .bindings = Opal::ArrayView<Rndr::InputBinding>(exit_bindings)});
 
     const Rndr::RendererBaseDesc renderer_desc = {.graphics_context = Opal::Ref{graphics_context}, .swap_chain = Opal::Ref{swap_chain}};
 
     constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_white;
     const Opal::ScopePtr<Rndr::RendererBase> clear_renderer =
-        Opal::MakeDefaultScoped<Rndr::ClearRenderer>(u8"Clear the screen", renderer_desc, k_clear_color);
+        Opal::MakeDefaultScoped<Rndr::ClearRenderer>("Clear the screen", renderer_desc, k_clear_color);
     const Opal::ScopePtr<Rndr::RendererBase> present_renderer =
-        Opal::MakeDefaultScoped<Rndr::PresentRenderer>(u8"Present the back buffer", renderer_desc);
-    const Opal::ScopePtr<SceneRenderer> mesh_renderer = Opal::MakeDefaultScoped<SceneRenderer>(u8"Render a mesh", renderer_desc);
+        Opal::MakeDefaultScoped<Rndr::PresentRenderer>("Present the back buffer", renderer_desc);
+    const Opal::ScopePtr<SceneRenderer> mesh_renderer = Opal::MakeDefaultScoped<SceneRenderer>("Render a mesh", renderer_desc);
 
     Rndr::FlyCamera fly_camera(&window, &Rndr::InputSystem::GetCurrentContext(),
                                {.start_position = Rndr::Point3f(-20.0f, 15.0f, 20.0f),

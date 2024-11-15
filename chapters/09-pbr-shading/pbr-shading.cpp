@@ -2,7 +2,7 @@
 
 #include <gli/gli.hpp>
 
-#include "opal/container/array.h"
+#include "opal/container/dynamic-array.h"
 #include "opal/container/ref.h"
 #include "opal/container/scope-ptr.h"
 #include "opal/container/string.h"
@@ -21,15 +21,14 @@
 #include "cube-map.h"
 #include "mesh.h"
 
-#define GLTF_SAMPLE_ASSETS OPAL_UTF8(ASSETS_ROOT) OPAL_UTF8("/gltf-Sample-Assets/Models")
+#define GLTF_SAMPLE_ASSETS ASSETS_ROOT "/gltf-Sample-Assets/Models"
 
 void Run(const Opal::StringUtf8& asset_path);
 
 int main(int argc, char* argv[])
 {
     Rndr::Init({.enable_input_system = true});
-    const Opal::StringUtf8 model_root =
-        Opal::Paths::Combine(nullptr, GLTF_SAMPLE_ASSETS, OPAL_UTF8("DamagedHelmet"), OPAL_UTF8("glTF")).GetValue();
+    const Opal::StringUtf8 model_root = Opal::Paths::Combine(nullptr, GLTF_SAMPLE_ASSETS, "DamagedHelmet", "glTF").GetValue();
     Run(model_root);
     Rndr::Destroy();
     return 0;
@@ -54,18 +53,18 @@ public:
         : Rndr::RendererBase(name, desc), m_asset_path(asset_path)
     {
         using namespace Rndr;
-        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("shaders")).GetValue();
-        const Opal::StringUtf8 vertex_shader_code = Rndr::File::ReadShader(shader_dir, OPAL_UTF8("basic-pbr.vert"));
-        const Opal::StringUtf8 fragment_shader_code = Rndr::File::ReadShader(shader_dir, OPAL_UTF8("basic-pbr.frag"));
+        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
+        const Opal::StringUtf8 vertex_shader_code = Rndr::File::ReadShader(shader_dir, "basic-pbr.vert");
+        const Opal::StringUtf8 fragment_shader_code = Rndr::File::ReadShader(shader_dir, "basic-pbr.frag");
         m_vertex_shader = Shader(desc.graphics_context, {.type = ShaderType::Vertex, .source = vertex_shader_code});
         RNDR_ASSERT(m_vertex_shader.IsValid());
         m_fragment_shader = Shader(desc.graphics_context, {.type = ShaderType::Fragment, .source = fragment_shader_code});
         RNDR_ASSERT(m_fragment_shader.IsValid());
 
-        const Opal::StringUtf8 mesh_path = Opal::Paths::Combine(nullptr, m_asset_path, OPAL_UTF8("DamagedHelmet.rndrmesh")).GetValue();
+        const Opal::StringUtf8 mesh_path = Opal::Paths::Combine(nullptr, m_asset_path, "DamagedHelmet.rndrmesh").GetValue();
         if (!Mesh::ReadData(m_mesh_data, mesh_path))
         {
-            RNDR_LOG_ERROR("Failed to load mesh data from file: %s", mesh_path.GetDataAs<c>());
+            RNDR_LOG_ERROR("Failed to load mesh data from file: %s", mesh_path.GetData());
             exit(1);
         }
 
@@ -92,40 +91,37 @@ public:
             desc.graphics_context, {.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = sizeof(PerFrameData)});
         RNDR_ASSERT(m_per_frame_buffer.IsValid());
 
-        const Opal::StringUtf8 albedo_image_path = Opal::Paths::Combine(nullptr, m_asset_path, OPAL_UTF8("Default_albedo.jpg")).GetValue();
+        const Opal::StringUtf8 albedo_image_path = Opal::Paths::Combine(nullptr, m_asset_path, "Default_albedo.jpg").GetValue();
         m_albedo_image = LoadImage(Rndr::TextureType::Texture2D, albedo_image_path);
         RNDR_ASSERT(m_albedo_image.IsValid());
 
-        const Opal::StringUtf8 normal_image_path = Opal::Paths::Combine(nullptr, m_asset_path, OPAL_UTF8("Default_normal.jpg")).GetValue();
+        const Opal::StringUtf8 normal_image_path = Opal::Paths::Combine(nullptr, m_asset_path, "Default_normal.jpg").GetValue();
         m_normal_image = LoadImage(Rndr::TextureType::Texture2D, normal_image_path);
         RNDR_ASSERT(m_normal_image.IsValid());
 
         const Opal::StringUtf8 metallic_roughness_image_path =
-            Opal::Paths::Combine(nullptr, m_asset_path, OPAL_UTF8("Default_metalRoughness.jpg")).GetValue();
+            Opal::Paths::Combine(nullptr, m_asset_path, "Default_metalRoughness.jpg").GetValue();
         m_metallic_roughness_image = LoadImage(Rndr::TextureType::Texture2D, metallic_roughness_image_path);
         RNDR_ASSERT(m_metallic_roughness_image.IsValid());
 
-        const Opal::StringUtf8 ao_image_path = Opal::Paths::Combine(nullptr, m_asset_path, OPAL_UTF8("Default_ao.jpg")).GetValue();
+        const Opal::StringUtf8 ao_image_path = Opal::Paths::Combine(nullptr, m_asset_path, "Default_ao.jpg").GetValue();
         m_ao_image = LoadImage(Rndr::TextureType::Texture2D, ao_image_path);
         RNDR_ASSERT(m_ao_image.IsValid());
 
-        const Opal::StringUtf8 emissive_image_path =
-            Opal::Paths::Combine(nullptr, m_asset_path, OPAL_UTF8("Default_emissive.jpg")).GetValue();
+        const Opal::StringUtf8 emissive_image_path = Opal::Paths::Combine(nullptr, m_asset_path, "Default_emissive.jpg").GetValue();
         m_emissive_image = LoadImage(Rndr::TextureType::Texture2D, emissive_image_path);
         RNDR_ASSERT(m_emissive_image.IsValid());
 
-        const Opal::StringUtf8 env_map_image_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("piazza_bologni_1k.hdr")).GetValue();
+        const Opal::StringUtf8 env_map_image_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "piazza_bologni_1k.hdr").GetValue();
         m_env_map_image = LoadImage(Rndr::TextureType::CubeMap, env_map_image_path);
         RNDR_ASSERT(m_env_map_image.IsValid());
 
         const Opal::StringUtf8 irradiance_map_image_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("piazza_bologni_1k_irradience.hdr")).GetValue();
+            Opal::Paths::Combine(nullptr, ASSETS_ROOT, "piazza_bologni_1k_irradience.hdr").GetValue();
         m_irradiance_map_image = LoadImage(Rndr::TextureType::CubeMap, irradiance_map_image_path);
         RNDR_ASSERT(m_irradiance_map_image.IsValid());
 
-        const Opal::StringUtf8 brdf_lut_image_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("brdf-lut.ktx")).GetValue();
+        const Opal::StringUtf8 brdf_lut_image_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "brdf-lut.ktx").GetValue();
         m_brdf_lut_image = LoadImage(Rndr::TextureType::Texture2D, brdf_lut_image_path);
 
         const Rndr::InputLayoutDesc input_layout_desc = Rndr::InputLayoutBuilder()
@@ -177,11 +173,11 @@ public:
     {
         using namespace Rndr;
 
-        const bool is_ktx = Opal::Paths::GetExtension(image_path).GetValue() == OPAL_UTF8(".ktx");
+        const bool is_ktx = Opal::Paths::GetExtension(image_path).GetValue() == ".ktx";
 
         if (is_ktx)
         {
-            gli::texture texture = gli::load_ktx(image_path.GetDataAs<c>());
+            gli::texture texture = gli::load_ktx(image_path.GetData());
             const TextureDesc image_desc{.width = texture.extent().x,
                                          .height = texture.extent().y,
                                          .array_size = 1,
@@ -192,7 +188,7 @@ public:
                                               .address_mode_u = ImageAddressMode::Clamp,
                                               .address_mode_v = ImageAddressMode::Clamp,
                                               .address_mode_w = ImageAddressMode::Clamp};
-            const Opal::Span<const u8> texture_data{static_cast<uint8_t*>(texture.data(0, 0, 0)), texture.size()};
+            const Opal::ArrayView<const u8> texture_data{static_cast<uint8_t*>(texture.data(0, 0, 0)), texture.size()};
             return {m_desc.graphics_context, image_desc, sampler_desc, texture_data};
         }
         if (image_type == TextureType::Texture2D)
@@ -207,7 +203,7 @@ public:
                                          .pixel_format = bitmap.GetPixelFormat(),
                                          .use_mips = true};
             const SamplerDesc sampler_desc = {.max_anisotropy = 16.0f};
-            const Opal::Span<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
+            const Opal::ArrayView<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
             return {m_desc.graphics_context, image_desc, sampler_desc, bitmap_data};
         }
         if (image_type == TextureType::CubeMap)
@@ -243,7 +239,7 @@ public:
             const SamplerDesc sampler_desc = {.address_mode_u = ImageAddressMode::Clamp,
                                               .address_mode_v = ImageAddressMode::Clamp,
                                               .address_mode_w = ImageAddressMode::Clamp};
-            const Opal::Span<const u8> bitmap_data{cube_map_bitmap.GetData(), cube_map_bitmap.GetSize3D()};
+            const Opal::ArrayView<const u8> bitmap_data{cube_map_bitmap.GetData(), cube_map_bitmap.GetSize3D()};
             return {m_desc.graphics_context, image_desc, sampler_desc, bitmap_data};
         }
         return {};
@@ -293,10 +289,9 @@ void Run(const Opal::StringUtf8& asset_path)
     SwapChain swap_chain(graphics_context, {.width = window.GetWidth(), .height = window.GetHeight()});
     const RendererBaseDesc renderer_desc{.graphics_context = Opal::Ref{graphics_context}, .swap_chain = Opal::Ref{swap_chain}};
     RendererManager renderer_manager;
-    const Opal::ScopePtr<RendererBase> clear_renderer =
-        Opal::MakeDefaultScoped<ClearRenderer>(OPAL_UTF8("Clear"), renderer_desc, Colors::k_white);
-    const Opal::ScopePtr<PbrRenderer> pbr_renderer = Opal::MakeDefaultScoped<PbrRenderer>(OPAL_UTF8("PBR"), renderer_desc, asset_path);
-    const Opal::ScopePtr<RendererBase> present_renderer = Opal::MakeDefaultScoped<PresentRenderer>(OPAL_UTF8("Present"), renderer_desc);
+    const Opal::ScopePtr<RendererBase> clear_renderer = Opal::MakeDefaultScoped<ClearRenderer>("Clear", renderer_desc, Colors::k_white);
+    const Opal::ScopePtr<PbrRenderer> pbr_renderer = Opal::MakeDefaultScoped<PbrRenderer>("PBR", renderer_desc, asset_path);
+    const Opal::ScopePtr<RendererBase> present_renderer = Opal::MakeDefaultScoped<PresentRenderer>("Present", renderer_desc);
     renderer_manager.AddRenderer(clear_renderer.Get());
     renderer_manager.AddRenderer(pbr_renderer.Get());
     renderer_manager.AddRenderer(present_renderer.Get());

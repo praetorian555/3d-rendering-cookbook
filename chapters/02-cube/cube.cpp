@@ -22,8 +22,8 @@ int main()
     Rndr::Destroy();
 }
 
-const c8* g_shader_code_vertex =
-    u8R"(
+const char8* g_shader_code_vertex =
+    R"(
         #version 460 core
         layout(std140, binding = 0) uniform PerFrameData {
           uniform mat4 MVP;
@@ -57,8 +57,8 @@ const c8* g_shader_code_vertex =
         }
     )";
 
-const c8* const g_shader_code_fragment =
-    u8R"(
+const char8* const g_shader_code_fragment =
+    R"(
         #version 460 core
         layout (location=0) in vec3 color;
         layout (location=0) out vec4 out_FragColor;

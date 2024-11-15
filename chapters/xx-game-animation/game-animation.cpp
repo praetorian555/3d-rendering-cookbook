@@ -29,15 +29,15 @@ public:
     SceneRenderer(const Opal::StringUtf8& name, const Rndr::RendererBaseDesc& desc, AppState* app_state, Rndr::ProjectionCamera* camera)
         : Rndr::RendererBase(name, desc), m_app_state(app_state), m_camera(camera)
     {
-        const Opal::StringUtf8 asset_base = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("game-animation")).GetValue();
-        const Opal::StringUtf8 model_path = Opal::Paths::Combine(nullptr, asset_base, OPAL_UTF8("woman.gltf")).GetValue();
-        const Opal::StringUtf8 texture_path = Opal::Paths::Combine(nullptr, asset_base, OPAL_UTF8("woman.png")).GetValue();
-        const Opal::StringUtf8 vertex_shader_path = OPAL_UTF8("gltf.vert");
-        const Opal::StringUtf8 fragment_shader_path = OPAL_UTF8("gltf.frag");
+        const Opal::StringUtf8 asset_base = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "game-animation").GetValue();
+        const Opal::StringUtf8 model_path = Opal::Paths::Combine(nullptr, asset_base, "woman.gltf").GetValue();
+        const Opal::StringUtf8 texture_path = Opal::Paths::Combine(nullptr, asset_base, "woman.png").GetValue();
+        const Opal::StringUtf8 vertex_shader_path = "gltf.vert";
+        const Opal::StringUtf8 fragment_shader_path = "gltf.frag";
 
         if (!AssimpHelpers::ReadMeshData(m_mesh_data, model_path, MeshAttributesToLoad::LoadAll))
         {
-            RNDR_LOG_ERROR("Failed to load model: %s", model_path.GetDataAs<c>());
+            RNDR_LOG_ERROR("Failed to load model: %s", model_path.GetData());
             RNDR_HALT("");
         }
 
@@ -50,7 +50,7 @@ public:
         m_texture.Initialize(
             desc.graphics_context,
             Rndr::TextureDesc{.width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat()}, {},
-            Opal::Span<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
+            Opal::ArrayView<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
         RNDR_ASSERT(m_texture.IsValid());
 
         const Opal::StringUtf8 vertex_shader_source = Rndr::File::ReadShader(asset_base, vertex_shader_path);
@@ -192,16 +192,16 @@ void Run()
                                                                                  .rotation_speed = 200});
 
     Opal::ScopePtr<Rndr::RendererBase> clear_renderer = Opal::MakeDefaultScoped<Rndr::ClearRenderer>(
-        u8"Clear Renderer", Rndr::RendererBaseDesc{.graphics_context = Opal::Ref(&graphics_context), .swap_chain = Opal::Ref(&swap_chain)},
+        "Clear Renderer", Rndr::RendererBaseDesc{.graphics_context = Opal::Ref(&graphics_context), .swap_chain = Opal::Ref(&swap_chain)},
         Rndr::Colors::k_black);
     Opal::ScopePtr<Rndr::RendererBase> scene_renderer = Opal::MakeDefaultScoped<SceneRenderer>(
-        u8"Scene Renderer", Rndr::RendererBaseDesc{.graphics_context = Opal::Ref(&graphics_context), .swap_chain = Opal::Ref(&swap_chain)},
+        "Scene Renderer", Rndr::RendererBaseDesc{.graphics_context = Opal::Ref(&graphics_context), .swap_chain = Opal::Ref(&swap_chain)},
         &app_state, &camera);
     Opal::ScopePtr<Rndr::RendererBase> ui_renderer = Opal::MakeDefaultScoped<UIRenderer>(
-        u8"UI Renderer", Rndr::RendererBaseDesc{.graphics_context = Opal::Ref(&graphics_context), .swap_chain = Opal::Ref(&swap_chain)},
+        "UI Renderer", Rndr::RendererBaseDesc{.graphics_context = Opal::Ref(&graphics_context), .swap_chain = Opal::Ref(&swap_chain)},
         &window, &app_state);
     Opal::ScopePtr<Rndr::RendererBase> present_renderer = Opal::MakeDefaultScoped<Rndr::PresentRenderer>(
-        u8"Present Renderer",
+        "Present Renderer",
         Rndr::RendererBaseDesc{.graphics_context = Opal::Ref(&graphics_context), .swap_chain = Opal::Ref(&swap_chain)});
 
     Rndr::RendererManager renderer_manager;

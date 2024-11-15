@@ -56,7 +56,7 @@ public:
     explicit MeshContainer(Rndr::GraphicsContext* graphics_context) : m_graphics_context(graphics_context)
     {
         // Setup vertex and index buffers
-        const Opal::StringUtf8 mesh_file_path = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("duck.gltf")).GetValue();
+        const Opal::StringUtf8 mesh_file_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck.gltf").GetValue();
         [[maybe_unused]] bool status = AssimpHelpers::ReadMeshData(m_mesh_data, mesh_file_path, MeshAttributesToLoad::LoadAll);
         RNDR_ASSERT(status);
         Rndr::ErrorCode err;
@@ -92,23 +92,23 @@ public:
                                   .Build();
 
         const Opal::StringUtf8 albedo_texture_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("duck-base-color.png")).GetValue();
+            Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck-base-color.png").GetValue();
         Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(albedo_texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, true);
         RNDR_ASSERT(bitmap.IsValid());
         err = m_albedo_texture.Initialize(
             m_graphics_context,
             {.width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(), .use_mips = true}, {},
-            Opal::Span<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
+            Opal::ArrayView<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         const Opal::StringUtf8 brick_texture_path =
-            Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("brick-wall.jpg")).GetValue();
+            Opal::Paths::Combine(nullptr, ASSETS_ROOT, "brick-wall.jpg").GetValue();
         bitmap = Rndr::File::ReadEntireImage(brick_texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, true);
         RNDR_ASSERT(bitmap.IsValid());
         err = m_brick_texture.Initialize(
             m_graphics_context,
             {.width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(), .use_mips = true}, {},
-            Opal::Span<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
+            Opal::ArrayView<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
     }
 
@@ -134,7 +134,7 @@ private:
     Rndr::Texture m_albedo_texture;
     Rndr::Texture m_brick_texture;
     Rndr::InputLayoutDesc m_input_layout_desc;
-    Opal::Array<Rndr::Matrix4x4f> m_model_matrices;
+    Opal::DynamicArray<Rndr::Matrix4x4f> m_model_matrices;
 };
 
 class ShadowRenderer : public Rndr::RendererBase
@@ -144,9 +144,9 @@ public:
         : RendererBase(name, desc), m_mesh_container(mesh_container), m_game_state(game_state)
     {
         // Setup shaders
-        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("shaders")).GetValue();
-        const Opal::StringUtf8 vertex_shader_contents = Rndr::File::ReadShader(shader_dir, u8"shadow.vert");
-        const Opal::StringUtf8 pixel_shader_contents = Rndr::File::ReadShader(shader_dir, u8"shadow.frag");
+        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
+        const Opal::StringUtf8 vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "shadow.vert");
+        const Opal::StringUtf8 pixel_shader_contents = Rndr::File::ReadShader(shader_dir, "shadow.frag");
         Rndr::ErrorCode err =
             m_vertex_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents});
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
@@ -229,9 +229,9 @@ public:
           m_shadow_texture(shadow_texture)
     {
         // Setup shaders
-        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("shaders")).GetValue();
-        const Opal::StringUtf8 vertex_shader_contents = Rndr::File::ReadShader(shader_dir, u8"scene-shadow.vert");
-        const Opal::StringUtf8 pixel_shader_contents = Rndr::File::ReadShader(shader_dir, u8"scene-shadow.frag");
+        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
+        const Opal::StringUtf8 vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "scene-shadow.vert");
+        const Opal::StringUtf8 pixel_shader_contents = Rndr::File::ReadShader(shader_dir, "scene-shadow.frag");
         Rndr::ErrorCode err =
             m_vertex_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents});
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
@@ -301,21 +301,21 @@ class PostProcessRenderer : public Rndr::RendererBase
 {
 public:
     PostProcessRenderer(const Rndr::RendererBaseDesc& desc, bool use_full_screen_triangle = false)
-        : RendererBase(u8"Post Process Renderer", desc), m_use_full_screen_triangle(use_full_screen_triangle)
+        : RendererBase("Post Process Renderer", desc), m_use_full_screen_triangle(use_full_screen_triangle)
     {
         // Setup shaders
-        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("shaders")).GetValue();
+        const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
         Opal::StringUtf8 vertex_shader_contents;
         if (m_use_full_screen_triangle)
         {
-            vertex_shader_contents = Rndr::File::ReadShader(shader_dir, u8"full-screen-triangle.vert");
+            vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "full-screen-triangle.vert");
         }
         else
         {
-            vertex_shader_contents = Rndr::File::ReadShader(shader_dir, u8"full-screen-quad.vert");
+            vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "full-screen-quad.vert");
         }
         const Opal::StringUtf8 pixel_shader_contents =
-            u8R"(
+            R"(
             #version 450
             layout(location = 0) in vec2 uv;
             layout(location = 0) out vec4 frag_color;
@@ -368,7 +368,7 @@ class UIRenderer : public Rndr::RendererBase
 public:
     UIRenderer(const Rndr::RendererBaseDesc& desc, Rndr::Window& window, GameState* game_state,
                const Rndr::FrameBuffer* shadow_frame_buffer)
-        : RendererBase(u8"UI Renderer", desc), m_game_state(game_state), m_shadow_frame_buffer(shadow_frame_buffer)
+        : RendererBase("UI Renderer", desc), m_game_state(game_state), m_shadow_frame_buffer(shadow_frame_buffer)
     {
         ImGuiWrapper::Init(window, *desc.graphics_context);
     }
@@ -414,13 +414,13 @@ void Run()
 
     window.on_resize.Bind([&swap_chain](int32_t width, int32_t height) { swap_chain.SetSize(width, height); });
 
-    Opal::Array<Rndr::InputBinding> exit_bindings;
+    Opal::DynamicArray<Rndr::InputBinding> exit_bindings;
     exit_bindings.PushBack({Rndr::InputPrimitive::Keyboard_Esc, Rndr::InputTrigger::ButtonReleased});
     Rndr::InputSystem::GetCurrentContext().AddAction(
-        Rndr::InputAction(u8"Exit"),
+        Rndr::InputAction("Exit"),
         Rndr::InputActionData{.callback = [&window](Rndr::InputPrimitive, Rndr::InputTrigger, float) { window.Close(); },
                               .native_window = window.GetNativeWindowHandle(),
-                              .bindings = Opal::Span<Rndr::InputBinding>(exit_bindings)});
+                              .bindings = Opal::ArrayView<Rndr::InputBinding>(exit_bindings)});
 
     const Rndr::RendererBaseDesc renderer_desc = {.graphics_context = Opal::Ref{graphics_context}, .swap_chain = Opal::Ref{swap_chain}};
 
@@ -435,19 +435,19 @@ void Run()
 
     constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_black;
     const Opal::ScopePtr<Rndr::RendererBase> clear_renderer =
-        Opal::MakeDefaultScoped<Rndr::ClearRenderer>(u8"Clear the screen", renderer_desc, k_clear_color);
+        Opal::MakeDefaultScoped<Rndr::ClearRenderer>("Clear the screen", renderer_desc, k_clear_color);
     const Opal::ScopePtr<Rndr::RendererBase> shadow_renderer =
-        Opal::MakeDefaultScoped<ShadowRenderer>(u8"Render shadows", renderer_desc, &mesh_container, &game_state);
+        Opal::MakeDefaultScoped<ShadowRenderer>("Render shadows", renderer_desc, &mesh_container, &game_state);
     //    const Opal::ScopePtr<Rndr::RendererBase> post_process_renderer = Opal::MakeDefaultScoped<PostProcessRenderer>(renderer_desc,
     //    true);
     const ShadowRenderer* shadow_renderer_ptr = static_cast<ShadowRenderer*>(shadow_renderer.Get());
     const Opal::ScopePtr<Rndr::RendererBase> scene_renderer =
-        Opal::MakeDefaultScoped<SceneRenderer>(u8"Render the scene", renderer_desc, &mesh_container, &game_state,
+        Opal::MakeDefaultScoped<SceneRenderer>("Render the scene", renderer_desc, &mesh_container, &game_state,
                                                &shadow_renderer_ptr->GetFrameBuffer()->GetDepthStencilAttachment(), &fly_camera);
     const Opal::ScopePtr<Rndr::RendererBase> ui_renderer =
         Opal::MakeDefaultScoped<UIRenderer>(renderer_desc, window, &game_state, shadow_renderer_ptr->GetFrameBuffer());
     const Opal::ScopePtr<Rndr::RendererBase> present_renderer =
-        Opal::MakeDefaultScoped<Rndr::PresentRenderer>(u8"Present the back buffer", renderer_desc);
+        Opal::MakeDefaultScoped<Rndr::PresentRenderer>("Present the back buffer", renderer_desc);
 
     Rndr::RendererManager renderer_manager;
     renderer_manager.AddRenderer(clear_renderer.Get());

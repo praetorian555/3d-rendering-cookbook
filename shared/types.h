@@ -13,16 +13,14 @@ using u16 = Opal::u16;
 using u32 = Opal::u32;
 using u64 = Opal::u64;
 
-using st = Opal::st;
+using size_t = Opal::size_t;
 
 using f32 = Opal::f32;
 using f64 = Opal::f64;
 
-using c = Opal::c;
-using wc = Opal::wc;
-using c8 = Opal::c8;
-using c16 = Opal::c16;
-using c32 = Opal::c32;
+using char8 = Opal::char8;
+using char16 = Opal::char16;
+using uchar32 = Opal::uchar32;
 
 using Point2f = Math::Point2<float>;
 using Point3f = Math::Point3<float>;

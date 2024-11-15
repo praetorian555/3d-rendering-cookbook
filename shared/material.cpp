@@ -18,15 +18,15 @@ namespace
 Opal::StringUtf8 ConvertTexture(
     const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
     Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
-    const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path);
-bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Texture>& out_textures,
-                   const Rndr::GraphicsContext& graphics_context, const Opal::Array<Opal::StringUtf8>& in_texture_paths);
+    const Opal::DynamicArray<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path);
+bool SetupMaterial(MaterialDescription& in_out_material, Opal::DynamicArray<Rndr::Texture>& out_textures,
+                   const Rndr::GraphicsContext& graphics_context, const Opal::DynamicArray<Opal::StringUtf8>& in_texture_paths);
 Rndr::Texture LoadTexture(const Rndr::GraphicsContext& graphics_context, const Opal::StringUtf8& texture_path);
 }  // namespace
 
-bool Material::ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materials, const Opal::StringUtf8& base_path,
-                                           Opal::Array<Opal::StringUtf8>& texture_paths,
-                                           const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
+bool Material::ConvertAndDownscaleTextures(const Opal::DynamicArray<MaterialDescription>& materials, const Opal::StringUtf8& base_path,
+                                           Opal::DynamicArray<Opal::StringUtf8>& texture_paths,
+                                           const Opal::DynamicArray<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
 {
     Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>> albedo_map_path_to_opacity_map_index(texture_paths.GetSize());
     for (const MaterialDescription& mat_desc : materials)
@@ -44,7 +44,7 @@ bool Material::ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription
     return true;
 }
 
-bool Material::WriteData(const Opal::Array<MaterialDescription>& materials, const Opal::Array<Opal::StringUtf8>& texture_paths,
+bool Material::WriteData(const Opal::DynamicArray<MaterialDescription>& materials, const Opal::DynamicArray<Opal::StringUtf8>& texture_paths,
                          const Opal::StringUtf8& file_path)
 {
     Opal::StringLocale file_path_locale;
@@ -80,7 +80,7 @@ bool Material::WriteData(const Opal::Array<MaterialDescription>& materials, cons
     return true;
 }
 
-bool Material::ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materials, Opal::Array<Rndr::Texture>& out_textures,
+bool Material::ReadDataLoadTextures(Opal::DynamicArray<MaterialDescription>& out_materials, Opal::DynamicArray<Rndr::Texture>& out_textures,
                                     const Opal::StringUtf8& file_path, const Rndr::GraphicsContext& graphics_context)
 {
     Opal::StringLocale file_path_locale;
@@ -108,7 +108,7 @@ bool Material::ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materi
     auto base_path_result = Opal::Paths::GetParentPath(file_path);
     RNDR_ASSERT(base_path_result.HasValue());
     Opal::StringUtf8 base_path = Opal::Move(base_path_result.GetValue());
-    Opal::Array<Opal::StringUtf8> texture_paths(texture_paths_count);
+    Opal::DynamicArray<Opal::StringUtf8> texture_paths(texture_paths_count);
     for (uint32_t i = 0; i < texture_paths_count; ++i)
     {
         size_t texture_path_length = 0;
@@ -160,8 +160,8 @@ bool Material::ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materi
 
 namespace
 {
-bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Texture>& out_textures,
-                   const Rndr::GraphicsContext& graphics_context, const Opal::Array<Opal::StringUtf8>& in_texture_paths)
+bool SetupMaterial(MaterialDescription& in_out_material, Opal::DynamicArray<Rndr::Texture>& out_textures,
+                   const Rndr::GraphicsContext& graphics_context, const Opal::DynamicArray<Opal::StringUtf8>& in_texture_paths)
 {
     if (in_out_material.albedo_texture != k_invalid_image_id)
     {
@@ -169,7 +169,7 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Textu
         Rndr::Texture albedo_map = LoadTexture(graphics_context, albedo_map_path);
         if (!albedo_map.IsValid())
         {
-            RNDR_LOG_ERROR("Failed to load albedo map: %s", reinterpret_cast<const c*>(albedo_map_path.GetData()));
+            RNDR_LOG_ERROR("Failed to load albedo map: %s", albedo_map_path.GetData());
             return false;
         }
         in_out_material.albedo_texture = albedo_map.GetBindlessHandle();
@@ -254,7 +254,7 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::Array<Rndr::Textu
 Opal::StringUtf8 ConvertTexture(
     const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
     Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
-    const Opal::Array<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
+    const Opal::DynamicArray<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
 {
     constexpr int32_t k_max_new_width = 512;
     constexpr int32_t k_max_new_height = 512;
@@ -277,11 +277,11 @@ Opal::StringUtf8 ConvertTexture(
     RNDR_ASSERT(src_path_result.HasValue());
     const Opal::StringUtf8 src_stem = Opal::Move(src_path_result.GetValue());
 
-    const Opal::StringUtf8 relative_dst_file = Opal::Paths::Combine(nullptr, relative_src_stem + u8"_rescaled.png").GetValue();
-    const Opal::StringUtf8 dst_file = Opal::Paths::Combine(nullptr, out_base_path, src_stem + u8"_rescaled.png").GetValue();
+    const Opal::StringUtf8 relative_dst_file = Opal::Paths::Combine(nullptr, relative_src_stem + "_rescaled.png").GetValue();
+    const Opal::StringUtf8 dst_file = Opal::Paths::Combine(nullptr, out_base_path, src_stem + "_rescaled.png").GetValue();
 
-    const char* src_file_raw = reinterpret_cast<const c*>(src_file.GetData());
-    const char* dst_file_raw = reinterpret_cast<const c*>(dst_file.GetData());
+    const char* src_file_raw = src_file.GetData();
+    const char* dst_file_raw = dst_file.GetData();
 
     RNDR_LOG_DEBUG("ConvertTexture: %s -> %s", src_file_raw, dst_file_raw);
 
@@ -293,7 +293,7 @@ Opal::StringUtf8 ConvertTexture(
     uint8_t* src_data = src_pixels;
     src_channels = STBI_rgb_alpha;
 
-    Opal::Array<u8> empty_image(k_max_new_width * k_max_new_height * 4);
+    Opal::DynamicArray<u8> empty_image(k_max_new_width * k_max_new_height * 4);
     if (src_data == nullptr)
     {
         RNDR_LOG_DEBUG("ConvertTexture: Failed to load [%s] texture", src_file_raw);
@@ -309,7 +309,7 @@ Opal::StringUtf8 ConvertTexture(
     {
         const uint64_t opacity_map_index = albedo_texture_path_to_opacity_texture_index[texture_path];
         const Opal::StringUtf8 opacity_map_file = Opal::Paths::Combine(nullptr, base_path, opacity_textures[opacity_map_index]).GetValue();
-        const char* opacity_map_file_raw = reinterpret_cast<const c*>(opacity_map_file.GetData());
+        const char* opacity_map_file_raw = opacity_map_file.GetData();
         int32_t opacity_width = 0;
         int32_t opacity_height = 0;
         stbi_uc* opacity_pixels = stbi_load(opacity_map_file_raw, &opacity_width, &opacity_height, nullptr, 1);
@@ -342,7 +342,7 @@ Opal::StringUtf8 ConvertTexture(
     }
 
     const uint32_t dst_image_size = src_width * src_height * src_channels;
-    Opal::Array<uint8_t> dst_data(dst_image_size);
+    Opal::DynamicArray<uint8_t> dst_data(dst_image_size);
     uint8_t* dst = dst_data.GetData();
 
     const int dst_width = std::min(src_width, k_max_new_width);
@@ -387,7 +387,7 @@ Rndr::Texture LoadTexture(const Rndr::GraphicsContext& graphics_context, const O
                                        .use_mips = true,
                                        .is_bindless = true};
     const Rndr::SamplerDesc sampler_desc{.max_anisotropy = 16.0f, .border_color = Rndr::Colors::k_white};
-    const Opal::Span<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
+    const Opal::ArrayView<const u8> bitmap_data{bitmap.GetData(), bitmap.GetSize3D()};
     return {graphics_context, image_desc, sampler_desc, bitmap_data};
 }
 

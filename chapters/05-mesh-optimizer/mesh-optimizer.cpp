@@ -32,8 +32,8 @@ int main()
     Rndr::Destroy();
 }
 
-const c8* const g_shader_code_vertex =
-    u8R"(
+const char8* const g_shader_code_vertex =
+    R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -48,8 +48,8 @@ void main()
 }
 )";
 
-static const c8* const g_shader_code_geometry =
-    u8R"(
+static const char8* const g_shader_code_geometry =
+    R"(
 #version 460 core
 layout( triangles ) in;
 layout( triangle_strip, max_vertices = 3 ) out;
@@ -75,8 +75,8 @@ void main()
 }
 )";
 
-const c8* const g_shader_code_fragment =
-    u8R"(
+const char8* const g_shader_code_fragment =
+    R"(
 #version 460 core
 layout (location=0) in vec3 colors;
 layout (location=1) in vec3 barycoords;
@@ -98,15 +98,15 @@ struct PerFrameData
 };
 constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
-bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr::Point3f>& vertices, Opal::Array<uint32_t>& indices,
-                            Opal::Array<uint32_t>& lod_indices);
+bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::DynamicArray<Rndr::Point3f>& vertices,
+                            Opal::DynamicArray<uint32_t>& indices, Opal::DynamicArray<uint32_t>& lod_indices);
 
 void Run()
 {
-    Opal::Array<Rndr::Point3f> positions;
-    Opal::Array<uint32_t> indices;
-    Opal::Array<uint32_t> indices_lod;
-    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("duck.gltf")).GetValue();
+    Opal::DynamicArray<Rndr::Point3f> positions;
+    Opal::DynamicArray<uint32_t> indices;
+    Opal::DynamicArray<uint32_t> indices_lod;
+    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck.gltf").GetValue();
     const bool success = LoadMeshAndGenerateLOD(file_path, positions, indices, indices_lod);
     if (!success)
     {
@@ -210,10 +210,10 @@ void Run()
     }
 }
 
-bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr::Point3f>& positions, Opal::Array<uint32_t>& indices,
-                            Opal::Array<uint32_t>& lod_indices)
+bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::DynamicArray<Rndr::Point3f>& positions,
+                            Opal::DynamicArray<uint32_t>& indices, Opal::DynamicArray<uint32_t>& lod_indices)
 {
-    const aiScene* scene = aiImportFile(file_path.GetDataAs<c>(), aiProcess_Triangulate);
+    const aiScene* scene = aiImportFile(file_path.GetData(), aiProcess_Triangulate);
     if (scene == nullptr || !scene->HasMeshes())
     {
         return false;
@@ -234,11 +234,11 @@ bool LoadMeshAndGenerateLOD(const Opal::StringUtf8& file_path, Opal::Array<Rndr:
     aiReleaseImport(scene);
 
     // Reindex the vertex buffer so that we remove redundant vertices.
-    Opal::Array<uint32_t> remap(indices.GetSize());
+    Opal::DynamicArray<uint32_t> remap(indices.GetSize());
     const size_t vertex_count = meshopt_generateVertexRemap(remap.GetData(), indices.GetData(), indices.GetSize(), positions.GetData(),
                                                             indices.GetSize(), sizeof(Rndr::Point3f));
-    Opal::Array<uint32_t> remapped_indices(indices.GetSize());
-    Opal::Array<Rndr::Point3f> remapped_vertices(vertex_count);
+    Opal::DynamicArray<uint32_t> remapped_indices(indices.GetSize());
+    Opal::DynamicArray<Rndr::Point3f> remapped_vertices(vertex_count);
     meshopt_remapIndexBuffer(remapped_indices.GetData(), indices.GetData(), indices.GetSize(), remap.GetData());
     meshopt_remapVertexBuffer(remapped_vertices.GetData(), positions.GetData(), positions.GetSize(), sizeof(Rndr::Point3f),
                               remap.GetData());

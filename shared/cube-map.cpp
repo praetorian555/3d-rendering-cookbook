@@ -2,6 +2,8 @@
 
 #include "stb_image_resize2.h"
 
+#include "opal/container/in-place-array.h"
+
 #include "rndr/log.h"
 
 // Represents faces in a resulting image.
@@ -83,7 +85,7 @@ bool CubeMap::ConvertEquirectangularMapToVerticalCross(const Rndr::Bitmap& in_bi
     // resulting image Y coordinate is growing in the direction of negative Z axis.
 
     constexpr i32 k_face_count = static_cast<int>(CubeMapFace::EnumCount);
-    const Opal::StackArray<Vector2i, k_face_count> k_face_offsets = {
+    const Opal::InPlaceArray<Vector2i, k_face_count> k_face_offsets = {
         Vector2i(2 * face_size, face_size), Vector2i(0, face_size),        Vector2i(face_size, 0), Vector2i(face_size, 2 * face_size),
         Vector2i(face_size, 3 * face_size), Vector2i(face_size, face_size)};
 
@@ -218,7 +220,7 @@ bool CubeMap::ConvolveDiffuse(const Vector3f* in_data, i32 in_width, i32 in_heig
         return false;
     }
 
-    Opal::Array<Vector3f> tmp(out_width * out_height);
+    Opal::DynamicArray<Vector3f> tmp(out_width * out_height);
 
     stbir_resize(reinterpret_cast<const f32*>(in_data), in_width, in_height, 0, reinterpret_cast<f32*>(tmp.GetData()), out_width,
                  out_height, 0, STBIR_RGB, STBIR_TYPE_FLOAT, STBIR_EDGE_CLAMP, STBIR_FILTER_CUBICBSPLINE);

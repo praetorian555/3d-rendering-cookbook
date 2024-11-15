@@ -34,8 +34,8 @@ int main()
     Rndr::Destroy();
 }
 
-static const c8* const g_vertex_shader_source =
-    u8R"(
+static const char8* const g_vertex_shader_source =
+    R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -59,8 +59,8 @@ void main()
 }
 )";
 
-static const c8* const g_pixel_shader_source =
-    u8R"(
+static const char8* const g_pixel_shader_source =
+    R"(
 #version 460 core
 layout (location=0) in vec2 uv;
 layout (location=0) out vec4 out_FragColor;
@@ -98,7 +98,7 @@ void Run()
         {.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = k_per_frame_size, .stride = k_per_frame_size});
     RNDR_ASSERT(per_frame_buffer.IsValid());
 
-    const Opal::StringUtf8 image_path = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("brick-wall.jpg")).GetValue();
+    const Opal::StringUtf8 image_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "brick-wall.jpg").GetValue();
     Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(image_path, Rndr::PixelFormat::R8G8B8_UNORM);
     RNDR_ASSERT(bitmap.IsValid());
     const Rndr::Texture image(graphics_context,
@@ -107,13 +107,13 @@ void Run()
                                   .height = bitmap.GetHeight(),
                                   .pixel_format = bitmap.GetPixelFormat()
                               },
-                              {}, Opal::Span<const u8>(bitmap.GetData(), bitmap.GetSize3D()));
+                              {}, Opal::ArrayView<const u8>(bitmap.GetData(), bitmap.GetSize3D()));
     RNDR_ASSERT(image.IsValid());
 
     constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_white;
 
     Rndr::InputContext& input_ctx = Rndr::InputSystem::GetCurrentContext();
-    const Rndr::InputAction exit_action{u8"exit"};
+    const Rndr::InputAction exit_action{"exit"};
     Rndr::InputActionData exit_action_data;
     exit_action_data.callback = [&window](Rndr::InputPrimitive primitive, Rndr::InputTrigger trigger, f32 value)
     {
@@ -127,7 +127,7 @@ void Run()
     input_ctx.AddBindingToAction(
         exit_action, Rndr::InputBinding{.primitive = Rndr::InputPrimitive::Keyboard_Esc, .trigger = Rndr::InputTrigger::ButtonReleased});
 
-    const Rndr::InputAction screenshot_action{u8"screenshot"};
+    const Rndr::InputAction screenshot_action{"screenshot"};
     Rndr::InputActionData screenshot_action_data;
     screenshot_action_data.callback =
         [&graphics_context, &swap_chain](Rndr::InputPrimitive primitive, Rndr::InputTrigger trigger, f32 value)
@@ -139,9 +139,9 @@ void Run()
         const bool is_read = graphics_context.ReadSwapChainColor(swap_chain, image_to_save);
         RNDR_ASSERT(is_read);
         RNDR_UNUSED(is_read);
-        Rndr::File::SaveImage(image_to_save, u8"screenshot.png");
+        Rndr::File::SaveImage(image_to_save, "screenshot.png");
 
-        Opal::Array<f32> image_to_save_float(image_to_save.GetSize2D());
+        Opal::DynamicArray<f32> image_to_save_float(image_to_save.GetSize2D());
         for (size_t i = 0; i < image_to_save.GetSize2D(); ++i)
         {
             image_to_save_float[i] = static_cast<f32>(image_to_save.GetData()[i]) / 255.0f;

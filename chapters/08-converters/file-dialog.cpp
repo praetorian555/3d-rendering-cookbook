@@ -34,7 +34,7 @@ Opal::StringUtf8 OpenFileDialog()
     GetOpenFileName(&ofn);
 
     Opal::StringUtf8 file_name_utf8;
-    file_name_utf8.Append(reinterpret_cast<const c8*>(file_name));
+    file_name_utf8.Append(reinterpret_cast<const char8*>(file_name));
     return file_name_utf8;
 }
 
@@ -50,7 +50,7 @@ Opal::StringUtf8 OpenFolderDialog()
         char path[MAX_PATH];
         if (SHGetPathFromIDList(pidl, path))
         {
-            ret.Append(reinterpret_cast<const c8*>(path));
+            ret.Append(reinterpret_cast<const char8*>(path));
         }
 
         // free memory used

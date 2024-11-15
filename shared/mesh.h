@@ -1,8 +1,8 @@
 #pragma once
 
-#include "opal/container/array.h"
-#include "opal/container/span.h"
-#include "opal/container/stack-array.h"
+#include "opal/container/dynamic-array.h"
+#include "opal/container/array-view.h"
+#include "opal/container/in-place-array.h"
 #include "opal/container/string.h"
 
 #include "rndr/enum-flags.h"
@@ -42,7 +42,7 @@ public:
     i64 lod_count = 0;
 
     /** Offsets of the LODs in indices starting from 0. First index is reserved for most detailed version of the mesh. */
-    Opal::StackArray<u32, k_max_lods> lod_offsets = {};
+    Opal::InPlaceArray<u32, k_max_lods> lod_offsets = {};
 
     [[nodiscard]] RNDR_FORCE_INLINE i64 GetLodIndicesCount(i64 lod) const
     {
@@ -57,13 +57,13 @@ public:
 struct MeshData
 {
     /** Descriptions of all meshes. */
-    Opal::Array<MeshDescription> meshes;
+    Opal::DynamicArray<MeshDescription> meshes;
     /** Vertex buffer data. */
-    Opal::Array<u8> vertex_buffer_data;
+    Opal::DynamicArray<u8> vertex_buffer_data;
     /** Index buffer data. */
-    Opal::Array<u8> index_buffer_data;
+    Opal::DynamicArray<u8> index_buffer_data;
     /** Bounding boxes of all meshes. */
-    Opal::Array<Bounds3f> bounding_boxes;
+    Opal::DynamicArray<Bounds3f> bounding_boxes;
 };
 
 /**
@@ -146,7 +146,7 @@ bool UpdateBoundingBoxes(MeshData& mesh_data);
  * @param mesh_data Mesh data to merge.
  * @return True if mesh data was merged successfully, false otherwise.
  */
-bool Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data);
+bool Merge(MeshData& out_mesh_data, const Opal::ArrayView<MeshData>& mesh_data);
 
 /**
  * Create draw commands that can be used with DrawIndicesMulti API to render meshes.
@@ -156,7 +156,7 @@ bool Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data);
  * @return True if draw commands were created successfully, false otherwise.
  * @note base_instance field in the DrawIndicesData will store material index. Instance count will be set to 1.
  */
-bool GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands, const Opal::Array<MeshDrawData>& mesh_draw_data,
+bool GetDrawCommands(Opal::DynamicArray<Rndr::DrawIndicesData>& out_draw_commands, const Opal::DynamicArray<MeshDrawData>& mesh_draw_data,
                      const MeshData& mesh_data);
 
 Rndr::ErrorCode AddPlaneXZ(MeshData& out_mesh_data, const Rndr::Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load);

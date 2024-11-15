@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opal/container/array.h"
+#include "opal/container/dynamic-array.h"
 #include "opal/container/string.h"
 
 #include "rndr/enum-flags.h"
@@ -76,8 +76,8 @@ namespace Material
  * @param opacity_textures List of paths to opacity textures relative to the base path.
  * @return True if the textures were successfully converted and downscaled, false otherwise.
  */
-bool ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materials, const Opal::StringUtf8& base_path,
-                                 Opal::Array<Opal::StringUtf8>& texture_paths, const Opal::Array<Opal::StringUtf8>& opacity_textures,
+bool ConvertAndDownscaleTextures(const Opal::DynamicArray<MaterialDescription>& materials, const Opal::StringUtf8& base_path,
+                                 Opal::DynamicArray<Opal::StringUtf8>& texture_paths, const Opal::DynamicArray<Opal::StringUtf8>& opacity_textures,
                                  const Opal::StringUtf8& out_base_path);
 
 /**
@@ -87,7 +87,7 @@ bool ConvertAndDownscaleTextures(const Opal::Array<MaterialDescription>& materia
  * @param file_path Path to the file.
  * @return True if the material data was written successfully, false otherwise.
  */
-bool WriteData(const Opal::Array<MaterialDescription>& materials, const Opal::Array<Opal::StringUtf8>& texture_paths,
+bool WriteData(const Opal::DynamicArray<MaterialDescription>& materials, const Opal::DynamicArray<Opal::StringUtf8>& texture_paths,
                const Opal::StringUtf8& file_path);
 
 /**
@@ -98,7 +98,7 @@ bool WriteData(const Opal::Array<MaterialDescription>& materials, const Opal::Ar
  * @param graphics_context Graphics context used to load the textures to the GPU.
  * @return True if the material data was read successfully and the textures were loaded to the GPU, false otherwise.
  */
-bool ReadDataLoadTextures(Opal::Array<MaterialDescription>& out_materials, Opal::Array<Rndr::Texture>& out_textures,
+bool ReadDataLoadTextures(Opal::DynamicArray<MaterialDescription>& out_materials, Opal::DynamicArray<Rndr::Texture>& out_textures,
                           const Opal::StringUtf8& file_path, const Rndr::GraphicsContext& graphics_context);
 
 }  // namespace Material

@@ -10,7 +10,7 @@ constexpr uint32_t k_magic = 0x89ABCDEF;
 
 bool Mesh::ReadData(MeshData& out_mesh_data, const Opal::StringUtf8& file_path)
 {
-    const c* file_path_raw = reinterpret_cast<const c*>(file_path.GetData());
+    const char8* file_path_raw = file_path.GetData();
     Rndr::FileHandler f(file_path_raw, "rb");
     if (!f.IsValid())
     {
@@ -75,7 +75,7 @@ bool Mesh::ReadData(MeshData& out_mesh_data, const Opal::StringUtf8& file_path)
 
 bool Mesh::WriteData(const MeshData& mesh_data, const Opal::StringUtf8& file_path)
 {
-    const c* file_path_raw = reinterpret_cast<const c*>(file_path.GetData());
+    const char8* file_path_raw = file_path.GetData();
     Rndr::FileHandler f(file_path_raw, "wb");
     if (!f.IsValid())
     {
@@ -141,7 +141,7 @@ bool Mesh::UpdateBoundingBoxes(MeshData& mesh_data)
     return false;
 }
 
-bool Mesh::Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data)
+bool Mesh::Merge(MeshData& out_mesh_data, const Opal::ArrayView<MeshData>& mesh_data)
 {
     if (mesh_data.IsEmpty())
     {
@@ -166,10 +166,10 @@ bool Mesh::Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data)
             }
         }
 
-        out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), mesh.vertex_buffer_data.ConstBegin(),
-                                                mesh.vertex_buffer_data.ConstEnd());
-        out_mesh_data.index_buffer_data.Insert(out_mesh_data.index_buffer_data.ConstEnd(), mesh.index_buffer_data.ConstBegin(),
-                                               mesh.index_buffer_data.ConstEnd());
+        out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.cend(), mesh.vertex_buffer_data.cbegin(),
+                                                mesh.vertex_buffer_data.cend());
+        out_mesh_data.index_buffer_data.Insert(out_mesh_data.index_buffer_data.cend(), mesh.index_buffer_data.cbegin(),
+                                               mesh.index_buffer_data.cend());
     }
 
     UpdateBoundingBoxes(out_mesh_data);
@@ -177,7 +177,7 @@ bool Mesh::Merge(MeshData& out_mesh_data, const Opal::Span<MeshData>& mesh_data)
     return true;
 }
 
-bool Mesh::GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands, const Opal::Array<MeshDrawData>& mesh_draw_data,
+bool Mesh::GetDrawCommands(Opal::DynamicArray<Rndr::DrawIndicesData>& out_draw_commands, const Opal::DynamicArray<MeshDrawData>& mesh_draw_data,
                            const MeshData& mesh_data)
 {
     out_draw_commands.Resize(mesh_draw_data.GetSize());
@@ -204,21 +204,21 @@ bool Mesh::GetDrawCommands(Opal::Array<Rndr::DrawIndicesData>& out_draw_commands
 
 Rndr::ErrorCode Mesh::AddPlaneXZ(MeshData& out_mesh_data, const Point3f& center, f32 scale, MeshAttributesToLoad attributes_to_load)
 {
-    const Opal::StackArray<Rndr::Point3f, 4> vertices = {
+    const Opal::InPlaceArray<Rndr::Point3f, 4> vertices = {
         Rndr::Point3f(center.x - scale, center.y, center.z - scale),
         Rndr::Point3f(center.x - scale, center.y, center.z + scale),
         Rndr::Point3f(center.x + scale, center.y, center.z + scale),
         Rndr::Point3f(center.x + scale, center.y, center.z - scale),
     };
 
-    const Opal::StackArray<Rndr::Vector3f, 4> normals = {
+    const Opal::InPlaceArray<Rndr::Vector3f, 4> normals = {
         Rndr::Vector3f(0, 0, 1),
         Rndr::Vector3f(0, 0, 1),
         Rndr::Vector3f(0, 0, 1),
         Rndr::Vector3f(0, 0, 1),
     };
 
-    const Opal::StackArray<Rndr::Point2f, 4> uvs = {
+    const Opal::InPlaceArray<Rndr::Point2f, 4> uvs = {
         Rndr::Point2f(0, 0),
         Rndr::Point2f(0, 1),
         Rndr::Point2f(1, 1),
@@ -250,20 +250,20 @@ Rndr::ErrorCode Mesh::AddPlaneXZ(MeshData& out_mesh_data, const Point3f& center,
     for (i32 i = 0; i < 4; i++)
     {
         const u8* vertex_data = reinterpret_cast<const u8*>(vertices[i].data);
-        out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), vertex_data,
+        out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.cend(), vertex_data,
                                                 vertex_data + sizeof(Rndr::Point3f));
 
         if (!!(attributes_to_load & MeshAttributesToLoad::LoadNormals))
         {
             const u8* normal_data = reinterpret_cast<const u8*>(normals[i].data);
-            out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), normal_data,
+            out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.cend(), normal_data,
                                                     normal_data + sizeof(Rndr::Vector3f));
         }
 
         if (!!(attributes_to_load & MeshAttributesToLoad::LoadUvs))
         {
             const u8* uv_data = reinterpret_cast<const u8*>(uvs[i].data);
-            out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.ConstEnd(), uv_data, uv_data + sizeof(Rndr::Point2f));
+            out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.cend(), uv_data, uv_data + sizeof(Rndr::Point2f));
         }
     }
 
@@ -271,7 +271,7 @@ Rndr::ErrorCode Mesh::AddPlaneXZ(MeshData& out_mesh_data, const Point3f& center,
     const u32 indices[] = {vertex_base + 0, vertex_base + 1, vertex_base + 2, vertex_base + 2, vertex_base + 3, vertex_base + 0};
     for (u32 i = 0; i < 6; i++)
     {
-        out_mesh_data.index_buffer_data.Insert(out_mesh_data.index_buffer_data.ConstEnd(), reinterpret_cast<const u8*>(&indices[i]),
+        out_mesh_data.index_buffer_data.Insert(out_mesh_data.index_buffer_data.cend(), reinterpret_cast<const u8*>(&indices[i]),
                                                reinterpret_cast<const u8*>(&indices[i]) + sizeof(indices[i]));
     }
 

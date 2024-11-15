@@ -12,7 +12,7 @@
 #include "rndr/rndr.h"
 #include "rndr/window.h"
 
-#include "opal/container/array.h"
+#include "opal/container/dynamic-array.h"
 #include "opal/container/ref.h"
 #include "opal/container/string.h"
 #include "opal/time.h"
@@ -31,7 +31,7 @@ int main()
 struct VulkanRendererDesc
 {
     bool enable_validation_layers = false;
-    Opal::Span<Opal::StringUtf8> required_instance_extensions;
+    Opal::ArrayView<Opal::StringUtf8> required_instance_extensions;
     Opal::Ref<Rndr::Window> window;
 };
 
@@ -46,16 +46,16 @@ struct VulkanRenderer
     struct SwapChainSupportDetails
     {
         VkSurfaceCapabilitiesKHR capabilities;
-        Opal::Array<VkSurfaceFormatKHR> formats;
-        Opal::Array<VkPresentModeKHR> present_modes;
+        Opal::DynamicArray<VkSurfaceFormatKHR> formats;
+        Opal::DynamicArray<VkPresentModeKHR> present_modes;
     };
 
     VulkanRenderer(const VulkanRendererDesc& desc = {});
     ~VulkanRenderer();
 
-    Opal::Array<const char*> GetRequiredInstanceExtensions();
+    Opal::DynamicArray<const char*> GetRequiredInstanceExtensions();
 
-    static Opal::Array<VkExtensionProperties> GetSupportedInstanceExtensions();
+    static Opal::DynamicArray<VkExtensionProperties> GetSupportedInstanceExtensions();
 
 private:
     void CreateInstance();
@@ -67,8 +67,8 @@ private:
     void CreateLogicalDevice();
     bool CheckDeviceExtensionSupport(const VkPhysicalDevice& device);
     SwapChainSupportDetails QuerySwapChainSupport(const VkPhysicalDevice& device);
-    VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const Opal::Array<VkSurfaceFormatKHR>& available_formats);
-    VkPresentModeKHR ChooseSwapPresentMode(const Opal::Array<VkPresentModeKHR>& available_present_modes);
+    VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const Opal::DynamicArray<VkSurfaceFormatKHR>& available_formats);
+    VkPresentModeKHR ChooseSwapPresentMode(const Opal::DynamicArray<VkPresentModeKHR>& available_present_modes);
     VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
     void CreateSwapChain();
     void CreateImageViews();
@@ -83,13 +83,13 @@ private:
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_present_queue = VK_NULL_HANDLE;
     VkSwapchainKHR m_swap_chain = VK_NULL_HANDLE;
-    Opal::Array<VkImage> m_swap_chain_images;
+    Opal::DynamicArray<VkImage> m_swap_chain_images;
     VkFormat m_swap_chain_image_format;
     VkExtent2D m_swap_chain_extent;
-    Opal::Array<VkImageView> m_swap_chain_image_views;
+    Opal::DynamicArray<VkImageView> m_swap_chain_image_views;
 
-    Opal::Array<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
-    Opal::Array<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    Opal::DynamicArray<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
+    Opal::DynamicArray<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 };
 
 void Run()
@@ -160,8 +160,8 @@ VulkanRenderer::~VulkanRenderer()
 void VulkanRenderer::CreateInstance()
 {
     // Check if all the requested instance extensions are supported
-    Opal::Array<const char*> required_extensions = GetRequiredInstanceExtensions();
-    Opal::Array<VkExtensionProperties> supported_extensions = GetSupportedInstanceExtensions();
+    Opal::DynamicArray<const char*> required_extensions = GetRequiredInstanceExtensions();
+    Opal::DynamicArray<VkExtensionProperties> supported_extensions = GetSupportedInstanceExtensions();
     for (const char* required_extension_name : required_extensions)
     {
         bool is_found = false;
@@ -186,7 +186,7 @@ void VulkanRenderer::CreateInstance()
         u32 available_layer_count = 0;
         vkEnumerateInstanceLayerProperties(&available_layer_count, nullptr);
 
-        Opal::Array<VkLayerProperties> available_layers;
+        Opal::DynamicArray<VkLayerProperties> available_layers;
         available_layers.Resize(available_layer_count);
         vkEnumerateInstanceLayerProperties(&available_layer_count, available_layers.GetData());
 
@@ -236,9 +236,9 @@ void VulkanRenderer::CreateInstance()
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 }
 
-Opal::Array<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
+Opal::DynamicArray<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
 {
-    Opal::Array<const char*> required_extension_names;
+    Opal::DynamicArray<const char*> required_extension_names;
     if (m_desc.required_instance_extensions.GetSize() > 0)
     {
         required_extension_names.Resize(m_desc.required_instance_extensions.GetSize());
@@ -258,12 +258,12 @@ Opal::Array<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
     return required_extension_names;
 }
 
-Opal::Array<VkExtensionProperties> VulkanRenderer::GetSupportedInstanceExtensions()
+Opal::DynamicArray<VkExtensionProperties> VulkanRenderer::GetSupportedInstanceExtensions()
 {
     u32 count = 0;
     vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
 
-    Opal::Array<VkExtensionProperties> extensions;
+    Opal::DynamicArray<VkExtensionProperties> extensions;
     if (count == 0)
     {
         return extensions;
@@ -329,7 +329,7 @@ void VulkanRenderer::PickPhysicalDevice()
     vkEnumeratePhysicalDevices(m_instance, &device_count, nullptr);
     RNDR_ASSERT(device_count > 0);
 
-    Opal::Array<VkPhysicalDevice> devices(device_count);
+    Opal::DynamicArray<VkPhysicalDevice> devices(device_count);
     vkEnumeratePhysicalDevices(m_instance, &device_count, devices.GetData());
     for (const VkPhysicalDevice& device : devices)
     {
@@ -384,7 +384,7 @@ VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhy
     u32 count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
 
-    Opal::Array<VkQueueFamilyProperties> queue_families(count);
+    Opal::DynamicArray<VkQueueFamilyProperties> queue_families(count);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &count, queue_families.GetData());
     i32 i = 0;
     for (const VkQueueFamilyProperties& queue_family : queue_families)
@@ -410,7 +410,7 @@ void VulkanRenderer::CreateLogicalDevice()
     QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_physical_device);
 
     const f32 queue_priority = 1.0f;
-    Opal::Array<VkDeviceQueueCreateInfo> queue_create_infos;
+    Opal::DynamicArray<VkDeviceQueueCreateInfo> queue_create_infos;
     {
         VkDeviceQueueCreateInfo queue_create_info{};
         queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -461,10 +461,10 @@ bool VulkanRenderer::CheckDeviceExtensionSupport(const VkPhysicalDevice& device)
     u32 extension_count = 0;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
 
-    Opal::Array<VkExtensionProperties> available_extensions(extension_count);
+    Opal::DynamicArray<VkExtensionProperties> available_extensions(extension_count);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.GetData());
 
-    Opal::Array<const char*> required_extensions = m_device_extensions;
+    Opal::DynamicArray<const char*> required_extensions = m_device_extensions;
     for (const char* required_extension_name : m_device_extensions)
     {
         bool is_found = false;
@@ -509,7 +509,7 @@ VulkanRenderer::SwapChainSupportDetails VulkanRenderer::QuerySwapChainSupport(co
     return details;
 }
 
-VkSurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(const Opal::Array<VkSurfaceFormatKHR>& available_formats)
+VkSurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(const Opal::DynamicArray<VkSurfaceFormatKHR>& available_formats)
 {
     RNDR_ASSERT(available_formats.GetSize() > 0);
     for (const VkSurfaceFormatKHR& format : available_formats)
@@ -522,7 +522,7 @@ VkSurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(const Opal::Array<VkS
     return available_formats[0];
 }
 
-VkPresentModeKHR VulkanRenderer::ChooseSwapPresentMode(const Opal::Array<VkPresentModeKHR>& available_present_modes)
+VkPresentModeKHR VulkanRenderer::ChooseSwapPresentMode(const Opal::DynamicArray<VkPresentModeKHR>& available_present_modes)
 {
     for (const VkPresentModeKHR& present_mode : available_present_modes)
     {

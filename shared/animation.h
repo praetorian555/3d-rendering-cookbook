@@ -1,7 +1,7 @@
 #pragma once
 
-#include "opal/container/array.h"
-#include "opal/container/stack-array.h"
+#include "opal/container/dynamic-array.h"
+#include "opal/container/in-place-array.h"
 #include "opal/container/string.h"
 
 #include "rndr/definitions.h"
@@ -40,7 +40,7 @@ struct SkeletalMeshDescription
     i64 lod_count = 0;
 
     /** Offsets of the LODs in indices starting from 0. First index is reserved for most detailed version of the mesh. */
-    Opal::StackArray<u32, k_max_lods> lod_offsets = {};
+    Opal::InPlaceArray<u32, k_max_lods> lod_offsets = {};
 
     [[nodiscard]] RNDR_FORCE_INLINE i64 GetLodIndicesCount(i64 lod) const
     {
@@ -55,9 +55,9 @@ struct SkeletalMeshDescription
 struct SkeletalMeshData
 {
     /** Descriptions of all meshes. */
-    Opal::Array<SkeletalMeshDescription> meshes;
+    Opal::DynamicArray<SkeletalMeshDescription> meshes;
     /** Vertex buffer data. */
-    Opal::Array<u8> vertex_buffer_data;
+    Opal::DynamicArray<u8> vertex_buffer_data;
     /** Index buffer data. */
-    Opal::Array<u8> index_buffer_data;
+    Opal::DynamicArray<u8> index_buffer_data;
 };

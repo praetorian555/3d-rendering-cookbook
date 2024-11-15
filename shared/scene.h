@@ -1,8 +1,8 @@
 #pragma once
 
-#include "opal/container/array.h"
+#include "opal/container/dynamic-array.h"
 #include "opal/container/hash-map.h"
-#include "opal/container/stack-array.h"
+#include "opal/container/in-place-array.h"
 #include "opal/container/string.h"
 
 #include "rndr/enum-flags.h"
@@ -42,13 +42,13 @@ struct HierarchyNode
 struct SceneDescription
 {
     /** Transforms relative to the parent node. Transform of the root is relative to the world. */
-    Opal::Array<Rndr::Matrix4x4f> local_transforms;
+    Opal::DynamicArray<Rndr::Matrix4x4f> local_transforms;
 
     /** Transforms relative to the world. */
-    Opal::Array<Rndr::Matrix4x4f> world_transforms;
+    Opal::DynamicArray<Rndr::Matrix4x4f> world_transforms;
 
     /** Hierarchy of the nodes. */
-    Opal::Array<Scene::HierarchyNode> hierarchy;
+    Opal::DynamicArray<Scene::HierarchyNode> hierarchy;
 
     /** Maps node id to mesh id. */
     Opal::HashMap<Scene::NodeId, uint32_t> node_id_to_mesh_id;
@@ -60,13 +60,13 @@ struct SceneDescription
     Opal::HashMap<Scene::NodeId, uint32_t> node_id_to_name;
 
     /** List of node names. */
-    Opal::Array<Opal::StringUtf8> node_names;
+    Opal::DynamicArray<Opal::StringUtf8> node_names;
 
     /** List of material names. */
-    Opal::Array<Opal::StringUtf8> material_names;
+    Opal::DynamicArray<Opal::StringUtf8> material_names;
 
     /** List of nodes that are dirty and that need to recalculate their world transform. */
-    Opal::Array<Scene::NodeId> dirty_nodes[Scene::k_max_node_level];
+    Opal::DynamicArray<Scene::NodeId> dirty_nodes[Scene::k_max_node_level];
 };
 
 /**
@@ -77,11 +77,11 @@ struct SceneDrawData
     /** Contains all the mesh data like vertex and index buffers. */
     MeshData mesh_data;
     /** Contains data needed to draw all shapes. */
-    Opal::Array<MeshDrawData> shapes;
+    Opal::DynamicArray<MeshDrawData> shapes;
     /** Contains all the materials. */
-    Opal::Array<MaterialDescription> materials;
+    Opal::DynamicArray<MaterialDescription> materials;
     /** Contains all the textures. */
-    Opal::Array<Rndr::Texture> textures;
+    Opal::DynamicArray<Rndr::Texture> textures;
     /** Contains all the scene data, like hierarchy. */
     SceneDescription scene_description;
 };

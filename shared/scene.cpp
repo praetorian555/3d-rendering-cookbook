@@ -8,7 +8,7 @@ namespace
 {
 bool WriteMap(Rndr::FileHandler& file, const Opal::HashMap<Scene::NodeId, uint32_t>& map)
 {
-    Opal::Array<uint32_t> flattened_map;
+    Opal::DynamicArray<uint32_t> flattened_map;
     flattened_map.Reserve(map.size() * 2);
 
     for (const auto& pair : map)
@@ -37,7 +37,7 @@ bool ReadMap(Rndr::FileHandler& file, Opal::HashMap<Scene::NodeId, uint32_t>& ma
         return true;
     }
 
-    Opal::Array<uint32_t> flattened_map(flattened_map_size);
+    Opal::DynamicArray<uint32_t> flattened_map(flattened_map_size);
     file.Read(flattened_map.GetData(), sizeof(uint32_t), flattened_map.GetSize());
     for (uint32_t i = 0; i < flattened_map_size; i += 2)
     {
@@ -46,7 +46,7 @@ bool ReadMap(Rndr::FileHandler& file, Opal::HashMap<Scene::NodeId, uint32_t>& ma
     return true;
 }
 
-bool WriteStringList(Rndr::FileHandler& file, const Opal::Array<Opal::StringUtf8>& strings)
+bool WriteStringList(Rndr::FileHandler& file, const Opal::DynamicArray<Opal::StringUtf8>& strings)
 {
     const size_t string_count = strings.GetSize();
     file.Write(&string_count, sizeof(string_count), 1);
@@ -59,7 +59,7 @@ bool WriteStringList(Rndr::FileHandler& file, const Opal::Array<Opal::StringUtf8
     return true;
 }
 
-bool ReadStringList(Rndr::FileHandler& file, Opal::Array<Opal::StringUtf8>& strings)
+bool ReadStringList(Rndr::FileHandler& file, Opal::DynamicArray<Opal::StringUtf8>& strings)
 {
     size_t string_count = 0;
     file.Read(&string_count, sizeof(string_count), 1);
@@ -68,7 +68,7 @@ bool ReadStringList(Rndr::FileHandler& file, Opal::Array<Opal::StringUtf8>& stri
     {
         size_t string_length = 0;
         file.Read(&string_length, sizeof(string_length), 1);
-        Opal::Array<c8> in_bytes(string_length + 1);
+        Opal::DynamicArray<char8> in_bytes(string_length + 1);
         file.Read(in_bytes.GetData(), string_length + 1, 1);
         string = Opal::StringUtf8(in_bytes.GetData(), in_bytes.GetSize());
     }
@@ -79,7 +79,7 @@ bool ReadStringList(Rndr::FileHandler& file, Opal::Array<Opal::StringUtf8>& stri
 
 bool Scene::ReadSceneDescription(SceneDescription& out_scene_description, const Opal::StringUtf8& scene_file)
 {
-    const char* scene_file_raw = reinterpret_cast<const char*>(scene_file.GetData());
+    const char* scene_file_raw = scene_file.GetData();
     Rndr::FileHandler file(scene_file_raw, "rb");
     if (!file.IsValid())
     {

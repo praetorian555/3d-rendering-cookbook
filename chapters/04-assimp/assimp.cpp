@@ -3,7 +3,7 @@
 #include <assimp/scene.h>
 #include <assimp/version.h>
 
-#include "opal/container/stack-array.h"
+#include "opal/container/in-place-array.h"
 #include "opal/container/string.h"
 #include "opal/paths.h"
 #include "opal/time.h"
@@ -33,8 +33,8 @@ int main()
     Rndr::Destroy();
 }
 
-const c8* const g_shader_code_vertex =
-    u8R"(
+const char8* const g_shader_code_vertex =
+    R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -50,8 +50,8 @@ void main()
 }
 )";
 
-const c8* const g_shader_code_fragment =
-    u8R"(
+const char8* const g_shader_code_fragment =
+    R"(
 #version 460 core
 layout (location=0) in vec3 color;
 layout (location=0) out vec4 out_FragColor;
@@ -70,8 +70,8 @@ constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
 void Run()
 {
-    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, OPAL_UTF8(ASSETS_ROOT), OPAL_UTF8("duck.gltf")).GetValue();
-    const aiScene* scene = aiImportFile(file_path.GetDataAs<Rndr::c>(), aiProcess_Triangulate);
+    const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck.gltf").GetValue();
+    const aiScene* scene = aiImportFile(file_path.GetData(), aiProcess_Triangulate);
     if (scene == nullptr || !scene->HasMeshes())
     {
         RNDR_LOG_ERROR("Failed to load mesh from file with error: %s", aiGetErrorString());
@@ -80,11 +80,11 @@ void Run()
     }
     RNDR_ASSERT(scene->HasMeshes());
     const aiMesh* mesh = scene->mMeshes[0];
-    Opal::Array<Rndr::Point3f> positions;
+    Opal::DynamicArray<Rndr::Point3f> positions;
     for (unsigned int i = 0; i != mesh->mNumFaces; i++)
     {
         const aiFace& face = mesh->mFaces[i];
-        Opal::StackArray<size_t, 3> idx{face.mIndices[0], face.mIndices[1], face.mIndices[2]};
+        Opal::InPlaceArray<size_t, 3> idx{face.mIndices[0], face.mIndices[1], face.mIndices[2]};
         for (int j = 0; j != 3; j++)
         {
             const aiVector3D v = mesh->mVertices[idx[j]];
