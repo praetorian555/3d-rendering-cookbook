@@ -58,6 +58,7 @@ private:
     bool IsDeviceSuitable(const VkPhysicalDevice& device);
     QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device);
     void CreateLogicalDevice();
+    bool CheckDeviceExtensionSupport(const VkPhysicalDevice& device);
 
 private:
     VulkanRendererDesc m_desc;
@@ -69,13 +70,14 @@ private:
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_present_queue = VK_NULL_HANDLE;
 
-    Opal::Array<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
+    Opal::Array<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
+    Opal::Array<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 };
 
 void Run()
 {
     Rndr::Window window(Rndr::WindowDesc{.width = 800, .height = 600, .name = "Vulkan Triangle Example"});
-    VulkanRendererDesc renderer_desc{.enable_validation_layers = true};
+    VulkanRendererDesc renderer_desc{.enable_validation_layers = true, .window = Opal::Ref(window)};
     VulkanRenderer renderer(renderer_desc);
 
     f32 delta_seconds = 1 / 60.0f;
@@ -164,7 +166,7 @@ void VulkanRenderer::CreateInstance()
         available_layers.Resize(available_layer_count);
         vkEnumerateInstanceLayerProperties(&available_layer_count, available_layers.GetData());
 
-        for (const char* validation_layer_name : validation_layers)
+        for (const char* validation_layer_name : m_validation_layers)
         {
             bool is_found = false;
             for (const VkLayerProperties& available_layer : available_layers)
@@ -198,15 +200,15 @@ void VulkanRenderer::CreateInstance()
     create_info.ppEnabledExtensionNames = required_extensions.GetData();
     if (m_desc.enable_validation_layers)
     {
-        create_info.enabledLayerCount = static_cast<u32>(validation_layers.GetSize());
-        create_info.ppEnabledLayerNames = validation_layers.GetData();
+        create_info.enabledLayerCount = static_cast<u32>(m_validation_layers.GetSize());
+        create_info.ppEnabledLayerNames = m_validation_layers.GetData();
     }
     else
     {
         create_info.enabledLayerCount = 0;
     }
 
-    VkResult vk_result = vkCreateInstance(&create_info, nullptr, &m_instance);
+    [[maybe_unused]] VkResult vk_result = vkCreateInstance(&create_info, nullptr, &m_instance);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 }
 
@@ -221,6 +223,7 @@ Opal::Array<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
             required_extension_names[i] = (const char*)m_desc.required_instance_extensions[i].GetData();
         }
     }
+    required_extension_names.PushBack("VK_KHR_surface");
 #if defined(OPAL_PLATFORM_WINDOWS)
     required_extension_names.PushBack("VK_KHR_win32_surface");
 #endif
@@ -276,7 +279,7 @@ void VulkanRenderer::SetupDebugMessanger()
     create_info.pfnUserCallback = DebugCallback;
     create_info.pUserData = nullptr;
 
-    VkResult result = CreateDebugUtilsMessengerEXT(m_instance, &create_info, nullptr, &m_debug_messenger);
+    [[maybe_unused]] VkResult result = CreateDebugUtilsMessengerEXT(m_instance, &create_info, nullptr, &m_debug_messenger);
     RNDR_ASSERT(result == VK_SUCCESS);
 }
 
@@ -289,7 +292,7 @@ void VulkanRenderer::CreateSurface()
     surface_create_info.hwnd = m_desc.window->GetNativeWindowHandle();
     surface_create_info.hinstance = GetModuleHandle(nullptr);
 
-    VkResult vk_result = vkCreateWin32SurfaceKHR(m_instance, &surface_create_info, nullptr, &m_surface);
+    [[maybe_unused]] VkResult vk_result = vkCreateWin32SurfaceKHR(m_instance, &surface_create_info, nullptr, &m_surface);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 #else
 #error Surface creation is not supported on this platform!
@@ -322,10 +325,14 @@ bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(device, &features);
 
-    QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
+    if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || !features.geometryShader)
+    {
+        return false;
+    }
 
-    return properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && features.geometryShader &&
-           queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value();
+    QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
+    return queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value() &&
+           CheckDeviceExtensionSupport(device);
 }
 
 VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhysicalDevice& device)
@@ -360,13 +367,13 @@ void VulkanRenderer::CreateLogicalDevice()
 {
     QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_physical_device);
 
-    Opal::Array<VkDeviceQueueCreateInfo> queue_create_infos(2);
+    const f32 queue_priority = 1.0f;
+    Opal::Array<VkDeviceQueueCreateInfo> queue_create_infos;
     {
         VkDeviceQueueCreateInfo queue_create_info{};
         queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queue_create_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
         queue_create_info.queueCount = 1;
-        const f32 queue_priority = 1.0f;
         queue_create_info.pQueuePriorities = &queue_priority;
         queue_create_infos.PushBack(queue_create_info);
     }
@@ -375,7 +382,6 @@ void VulkanRenderer::CreateLogicalDevice()
         queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queue_create_info.queueFamilyIndex = queue_family_indices.present_family.value();
         queue_create_info.queueCount = 1;
-        const f32 queue_priority = 1.0f;
         queue_create_info.pQueuePriorities = &queue_priority;
         queue_create_infos.PushBack(queue_create_info);
     }
@@ -388,21 +394,50 @@ void VulkanRenderer::CreateLogicalDevice()
     device_create_info.queueCreateInfoCount = static_cast<u32>(queue_create_infos.GetSize());
     device_create_info.pEnabledFeatures = &device_features;
 
-    device_create_info.enabledExtensionCount = 0;
+    device_create_info.enabledExtensionCount = static_cast<u32>(m_device_extensions.GetSize());
+    device_create_info.ppEnabledExtensionNames = m_device_extensions.GetData();
 
     if (m_desc.enable_validation_layers)
     {
-        device_create_info.enabledLayerCount = static_cast<u32>(validation_layers.GetSize());
-        device_create_info.ppEnabledLayerNames = validation_layers.GetData();
+        device_create_info.enabledLayerCount = static_cast<u32>(m_validation_layers.GetSize());
+        device_create_info.ppEnabledLayerNames = m_validation_layers.GetData();
     }
     else
     {
         device_create_info.enabledLayerCount = 0;
     }
 
-    VkResult vk_result = vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_device);
+    [[maybe_unused]] VkResult vk_result = vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_device);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 
     vkGetDeviceQueue(m_device, queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
     vkGetDeviceQueue(m_device, queue_family_indices.present_family.value(), 0, &m_present_queue);
+}
+
+bool VulkanRenderer::CheckDeviceExtensionSupport(const VkPhysicalDevice& device)
+{
+    u32 extension_count = 0;
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
+
+    Opal::Array<VkExtensionProperties> available_extensions(extension_count);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.GetData());
+
+    Opal::Array<const char*> required_extensions = m_device_extensions;
+    for (const char* required_extension_name : m_device_extensions)
+    {
+        bool is_found = false;
+        for (const VkExtensionProperties& available_extension : available_extensions)
+        {
+            if (strcmp(required_extension_name, available_extension.extensionName) == 0)
+            {
+                is_found = true;
+                break;
+            }
+        }
+        if (!is_found)
+        {
+            return false;
+        }
+    }
+    return true;
 }
