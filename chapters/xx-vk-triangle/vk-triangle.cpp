@@ -1,3 +1,5 @@
+#include <optional>
+
 #include "vulkan/vulkan.hpp"
 
 #include "rndr/input.h"
@@ -27,6 +29,11 @@ struct VulkanRendererDesc
 
 struct VulkanRenderer
 {
+    struct QueueFamilyIndices
+    {
+        std::optional<u32> graphics_family;
+    };
+
     VulkanRenderer(const VulkanRendererDesc& desc = {});
     ~VulkanRenderer();
 
@@ -37,11 +44,20 @@ struct VulkanRenderer
 private:
     void CreateInstance();
     void SetupDebugMessanger();
+    void PickPhysicalDevice();
+    bool IsDeviceSuitable(const VkPhysicalDevice& device);
+    QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device);
+    void CreateLogicalDevice();
 
 private:
     VulkanRendererDesc m_desc;
-    VkInstance m_instance;
-    VkDebugUtilsMessengerEXT m_debug_messenger;
+    VkInstance m_instance = VK_NULL_HANDLE;
+    VkDebugUtilsMessengerEXT m_debug_messenger = VK_NULL_HANDLE;
+    VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
+    VkDevice m_device = VK_NULL_HANDLE;
+    VkQueue m_graphics_queue = VK_NULL_HANDLE;
+
+    Opal::Array<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
 };
 
 void Run()
@@ -74,10 +90,31 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityF
     return VK_FALSE;
 }
 
+void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
+{
+    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    if (func != nullptr)
+    {
+        func(instance, debugMessenger, pAllocator);
+    }
+}
+
 VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 {
     CreateInstance();
     SetupDebugMessanger();
+    PickPhysicalDevice();
+    CreateLogicalDevice();
+}
+
+VulkanRenderer::~VulkanRenderer()
+{
+    vkDestroyDevice(m_device, nullptr);
+    if (m_desc.enable_validation_layers)
+    {
+        DestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
+    }
+    vkDestroyInstance(m_instance, nullptr);
 }
 
 void VulkanRenderer::CreateInstance()
@@ -104,7 +141,6 @@ void VulkanRenderer::CreateInstance()
     }
 
     // Check if validation layers are available
-    Opal::Array<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
     if (m_desc.enable_validation_layers)
     {
         u32 available_layer_count = 0;
@@ -158,24 +194,6 @@ void VulkanRenderer::CreateInstance()
 
     VkResult vk_result = vkCreateInstance(&create_info, nullptr, &m_instance);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
-}
-
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
-{
-    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-    if (func != nullptr)
-    {
-        func(instance, debugMessenger, pAllocator);
-    }
-}
-
-VulkanRenderer::~VulkanRenderer()
-{
-    if (m_desc.enable_validation_layers)
-    {
-        DestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
-    }
-    vkDestroyInstance(m_instance, nullptr);
 }
 
 Opal::Array<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
@@ -243,4 +261,95 @@ void VulkanRenderer::SetupDebugMessanger()
 
     VkResult result = CreateDebugUtilsMessengerEXT(m_instance, &create_info, nullptr, &m_debug_messenger);
     RNDR_ASSERT(result == VK_SUCCESS);
+}
+
+void VulkanRenderer::PickPhysicalDevice()
+{
+    u32 device_count = 0;
+    vkEnumeratePhysicalDevices(m_instance, &device_count, nullptr);
+    RNDR_ASSERT(device_count > 0);
+
+    Opal::Array<VkPhysicalDevice> devices(device_count);
+    vkEnumeratePhysicalDevices(m_instance, &device_count, devices.GetData());
+    for (const VkPhysicalDevice& device : devices)
+    {
+        if (IsDeviceSuitable(device))
+        {
+            m_physical_device = device;
+            break;
+        }
+    }
+    RNDR_ASSERT(m_physical_device != VK_NULL_HANDLE);
+}
+
+bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
+{
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(device, &properties);
+    VkPhysicalDeviceFeatures features;
+    vkGetPhysicalDeviceFeatures(device, &features);
+
+    QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
+
+    return properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && features.geometryShader &&
+           queue_family_indices.graphics_family.has_value();
+}
+
+VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhysicalDevice& device)
+{
+    QueueFamilyIndices indices;
+
+    u32 count = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
+
+    Opal::Array<VkQueueFamilyProperties> queue_families(count);
+    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, queue_families.GetData());
+    i32 i = 0;
+    for (const VkQueueFamilyProperties& queue_family : queue_families)
+    {
+        if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+        {
+            indices.graphics_family = i;
+        }
+        i++;
+    }
+
+    return indices;
+}
+
+void VulkanRenderer::CreateLogicalDevice()
+{
+    QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_physical_device);
+
+    VkDeviceQueueCreateInfo queue_create_info{};
+    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queue_create_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+    queue_create_info.queueCount = 1;
+    const f32 queue_priority = 1.0f;
+    queue_create_info.pQueuePriorities = &queue_priority;
+
+    VkPhysicalDeviceFeatures device_features{};
+
+    VkDeviceCreateInfo device_create_info{};
+    device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    device_create_info.pQueueCreateInfos = &queue_create_info;
+    device_create_info.queueCreateInfoCount = 1;
+    device_create_info.pEnabledFeatures = &device_features;
+    
+    device_create_info.enabledExtensionCount = 0;
+
+    if (m_desc.enable_validation_layers)
+    {
+        device_create_info.enabledLayerCount = static_cast<u32>(validation_layers.GetSize());
+        device_create_info.ppEnabledLayerNames = validation_layers.GetData();
+    }
+    else
+    {
+        device_create_info.enabledLayerCount = 0;
+    }
+
+    VkResult vk_result = vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_device);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+
+    vkGetDeviceQueue(m_device, queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
 }
