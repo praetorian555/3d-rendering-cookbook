@@ -77,6 +77,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityF
 VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 {
     CreateInstance();
+    SetupDebugMessanger();
 }
 
 void VulkanRenderer::CreateInstance()
