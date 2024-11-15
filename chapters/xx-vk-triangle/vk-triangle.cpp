@@ -1,12 +1,19 @@
 #include <optional>
 
+#include "opal/defines.h"
+
 #include "vulkan/vulkan.hpp"
+#if defined(OPAL_PLATFORM_WINDOWS)
+#include "rndr/platform/windows-header.h"
+#include "vulkan/vulkan_win32.h"
+#endif
 
 #include "rndr/input.h"
 #include "rndr/rndr.h"
 #include "rndr/window.h"
 
 #include "opal/container/array.h"
+#include "opal/container/ref.h"
 #include "opal/container/string.h"
 #include "opal/time.h"
 
@@ -25,6 +32,7 @@ struct VulkanRendererDesc
 {
     bool enable_validation_layers = false;
     Opal::Span<Opal::StringUtf8> required_instance_extensions;
+    Opal::Ref<Rndr::Window> window;
 };
 
 struct VulkanRenderer
@@ -32,6 +40,7 @@ struct VulkanRenderer
     struct QueueFamilyIndices
     {
         std::optional<u32> graphics_family;
+        std::optional<u32> present_family;
     };
 
     VulkanRenderer(const VulkanRendererDesc& desc = {});
@@ -44,6 +53,7 @@ struct VulkanRenderer
 private:
     void CreateInstance();
     void SetupDebugMessanger();
+    void CreateSurface();
     void PickPhysicalDevice();
     bool IsDeviceSuitable(const VkPhysicalDevice& device);
     QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device);
@@ -52,10 +62,12 @@ private:
 private:
     VulkanRendererDesc m_desc;
     VkInstance m_instance = VK_NULL_HANDLE;
+    VkSurfaceKHR m_surface = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT m_debug_messenger = VK_NULL_HANDLE;
     VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
     VkDevice m_device = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
+    VkQueue m_present_queue = VK_NULL_HANDLE;
 
     Opal::Array<const char*> validation_layers = {"VK_LAYER_KHRONOS_validation"};
 };
@@ -103,6 +115,7 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 {
     CreateInstance();
     SetupDebugMessanger();
+    CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
 }
@@ -110,6 +123,7 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 VulkanRenderer::~VulkanRenderer()
 {
     vkDestroyDevice(m_device, nullptr);
+    vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     if (m_desc.enable_validation_layers)
     {
         DestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
@@ -207,6 +221,9 @@ Opal::Array<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
             required_extension_names[i] = (const char*)m_desc.required_instance_extensions[i].GetData();
         }
     }
+#if defined(OPAL_PLATFORM_WINDOWS)
+    required_extension_names.PushBack("VK_KHR_win32_surface");
+#endif
     if (m_desc.enable_validation_layers)
     {
         required_extension_names.PushBack(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -263,6 +280,22 @@ void VulkanRenderer::SetupDebugMessanger()
     RNDR_ASSERT(result == VK_SUCCESS);
 }
 
+void VulkanRenderer::CreateSurface()
+{
+
+#if defined(OPAL_PLATFORM_WINDOWS)
+    VkWin32SurfaceCreateInfoKHR surface_create_info{};
+    surface_create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
+    surface_create_info.hwnd = m_desc.window->GetNativeWindowHandle();
+    surface_create_info.hinstance = GetModuleHandle(nullptr);
+
+    VkResult vk_result = vkCreateWin32SurfaceKHR(m_instance, &surface_create_info, nullptr, &m_surface);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+#else
+#error Surface creation is not supported on this platform!
+#endif
+}
+
 void VulkanRenderer::PickPhysicalDevice()
 {
     u32 device_count = 0;
@@ -292,7 +325,7 @@ bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
     QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
 
     return properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && features.geometryShader &&
-           queue_family_indices.graphics_family.has_value();
+           queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value();
 }
 
 VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhysicalDevice& device)
@@ -311,6 +344,12 @@ VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhy
         {
             indices.graphics_family = i;
         }
+        VkBool32 present_support = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &present_support);
+        if (present_support)
+        {
+            indices.present_family = i;
+        }
         i++;
     }
 
@@ -321,21 +360,34 @@ void VulkanRenderer::CreateLogicalDevice()
 {
     QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_physical_device);
 
-    VkDeviceQueueCreateInfo queue_create_info{};
-    queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_create_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
-    queue_create_info.queueCount = 1;
-    const f32 queue_priority = 1.0f;
-    queue_create_info.pQueuePriorities = &queue_priority;
+    Opal::Array<VkDeviceQueueCreateInfo> queue_create_infos(2);
+    {
+        VkDeviceQueueCreateInfo queue_create_info{};
+        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+        queue_create_info.queueCount = 1;
+        const f32 queue_priority = 1.0f;
+        queue_create_info.pQueuePriorities = &queue_priority;
+        queue_create_infos.PushBack(queue_create_info);
+    }
+    {
+        VkDeviceQueueCreateInfo queue_create_info{};
+        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queue_create_info.queueFamilyIndex = queue_family_indices.present_family.value();
+        queue_create_info.queueCount = 1;
+        const f32 queue_priority = 1.0f;
+        queue_create_info.pQueuePriorities = &queue_priority;
+        queue_create_infos.PushBack(queue_create_info);
+    }
 
     VkPhysicalDeviceFeatures device_features{};
 
     VkDeviceCreateInfo device_create_info{};
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_create_info.pQueueCreateInfos = &queue_create_info;
-    device_create_info.queueCreateInfoCount = 1;
+    device_create_info.pQueueCreateInfos = queue_create_infos.GetData();
+    device_create_info.queueCreateInfoCount = static_cast<u32>(queue_create_infos.GetSize());
     device_create_info.pEnabledFeatures = &device_features;
-    
+
     device_create_info.enabledExtensionCount = 0;
 
     if (m_desc.enable_validation_layers)
@@ -352,4 +404,5 @@ void VulkanRenderer::CreateLogicalDevice()
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 
     vkGetDeviceQueue(m_device, queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
+    vkGetDeviceQueue(m_device, queue_family_indices.present_family.value(), 0, &m_present_queue);
 }
