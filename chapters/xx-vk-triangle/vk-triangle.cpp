@@ -55,6 +55,8 @@ struct VulkanRenderer
     VulkanRenderer(VulkanRendererDesc desc = {});
     ~VulkanRenderer();
 
+    void Draw();
+
     Opal::DynamicArray<const char*> GetRequiredInstanceExtensions();
 
     static Opal::DynamicArray<VkExtensionProperties> GetSupportedInstanceExtensions();
@@ -77,6 +79,12 @@ private:
     void CreateRenderPass();
     void CreateGraphicsPipeline();
     VkShaderModule CreateShaderModule(const Opal::DynamicArray<u8>& code);
+    void CreateFrameBuffers();
+    void CreateCommandPool();
+    void CreateCommandBuffer();
+    void CreateSyncObjects();
+
+    void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index);
 
 private:
     VulkanRendererDesc m_desc;
@@ -97,6 +105,12 @@ private:
     VkRenderPass m_render_pass = VK_NULL_HANDLE;
     VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
     VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
+    Opal::DynamicArray<VkFramebuffer> m_swap_chain_frame_buffers;
+    VkCommandPool m_command_pool = VK_NULL_HANDLE;
+    VkCommandBuffer m_command_buffer = VK_NULL_HANDLE;
+    VkSemaphore m_image_available_semaphore = VK_NULL_HANDLE;
+    VkSemaphore m_render_finished_semaphore = VK_NULL_HANDLE;
+    VkFence m_in_flight_fence;
 
     Opal::DynamicArray<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
     Opal::DynamicArray<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -115,6 +129,8 @@ void Run()
 
         window.ProcessEvents();
         Rndr::InputSystem::ProcessEvents(delta_seconds);
+
+        renderer.Draw();
 
         const f64 end_time = Opal::GetSeconds();
         delta_seconds = static_cast<f32>(end_time - start_time);
@@ -152,10 +168,23 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
     CreateImageViews();
     CreateRenderPass();
     CreateGraphicsPipeline();
+    CreateFrameBuffers();
+    CreateCommandPool();
+    CreateCommandBuffer();
+    CreateSyncObjects();
 }
 
 VulkanRenderer::~VulkanRenderer()
 {
+    vkDeviceWaitIdle(m_device);
+    vkDestroySemaphore(m_device, m_render_finished_semaphore, nullptr);
+    vkDestroySemaphore(m_device, m_image_available_semaphore, nullptr);
+    vkDestroyFence(m_device, m_in_flight_fence, nullptr);
+    vkDestroyCommandPool(m_device, m_command_pool, nullptr);
+    for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
+    {
+        vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
+    }
     vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
     vkDestroyRenderPass(m_device, m_render_pass, nullptr);
@@ -667,12 +696,22 @@ void VulkanRenderer::CreateRenderPass()
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &color_attachment_ref;
 
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
     VkRenderPassCreateInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     render_pass_info.attachmentCount = 1;
     render_pass_info.pAttachments = &color_attachment;
     render_pass_info.subpassCount = 1;
     render_pass_info.pSubpasses = &subpass;
+    render_pass_info.dependencyCount = 1;
+    render_pass_info.pDependencies = &dependency;
 
     [[maybe_unused]] const VkResult vk_result = vkCreateRenderPass(m_device, &render_pass_info, nullptr, &m_render_pass);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
@@ -825,4 +864,148 @@ VkShaderModule VulkanRenderer::CreateShaderModule(const Opal::DynamicArray<u8>& 
     [[maybe_unused]] const VkResult vk_result = vkCreateShaderModule(m_device, &create_info, nullptr, &shader_module);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
     return shader_module;
+}
+
+void VulkanRenderer::CreateFrameBuffers()
+{
+    m_swap_chain_frame_buffers.Resize(m_swap_chain_image_views.GetSize());
+    for (u32 i = 0; i < m_swap_chain_image_views.GetSize(); ++i)
+    {
+        VkImageView attachments[] = {m_swap_chain_image_views[i]};
+
+        VkFramebufferCreateInfo frame_buffer_info{};
+        frame_buffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        frame_buffer_info.renderPass = m_render_pass;
+        frame_buffer_info.attachmentCount = 1;
+        frame_buffer_info.pAttachments = attachments;
+        frame_buffer_info.width = m_swap_chain_extent.width;
+        frame_buffer_info.height = m_swap_chain_extent.height;
+        frame_buffer_info.layers = 1;
+
+        [[maybe_unused]] VkResult vk_result = vkCreateFramebuffer(m_device, &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]);
+        RNDR_ASSERT(vk_result == VK_SUCCESS);
+    }
+}
+
+void VulkanRenderer::CreateCommandPool()
+{
+    QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_physical_device);
+
+    VkCommandPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+    [[maybe_unused]] VkResult vk_result = vkCreateCommandPool(m_device, &pool_info, nullptr, &m_command_pool);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+}
+
+void VulkanRenderer::CreateCommandBuffer()
+{
+    VkCommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = m_command_pool;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1;
+
+    [[maybe_unused]] const VkResult vk_result = vkAllocateCommandBuffers(m_device, &alloc_info, &m_command_buffer);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+}
+
+void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
+{
+    VkCommandBufferBeginInfo begin_info{};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = 0;
+    begin_info.pInheritanceInfo = nullptr;
+
+    [[maybe_unused]] VkResult vk_result = vkBeginCommandBuffer(command_buffer, &begin_info);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+
+    VkRenderPassBeginInfo render_pass_info{};
+    render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    render_pass_info.renderPass = m_render_pass;
+    render_pass_info.framebuffer = m_swap_chain_frame_buffers[image_index];
+    render_pass_info.renderArea.offset = {0, 0};
+    render_pass_info.renderArea.extent = m_swap_chain_extent;
+
+    const VkClearValue clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
+    render_pass_info.clearValueCount = 1;
+    render_pass_info.pClearValues = &clear_color;
+
+    vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
+    vkCmdSetViewport(command_buffer, 0, 1, &m_viewport);
+    vkCmdSetScissor(command_buffer, 0, 1, &m_scissor);
+    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+    vkCmdEndRenderPass(command_buffer);
+
+    vk_result = vkEndCommandBuffer(command_buffer);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+}
+
+void VulkanRenderer::Draw()
+{
+    // Wait for the previous frame to finish
+    vkWaitForFences(m_device, 1, &m_in_flight_fence, VK_TRUE, UINT64_MAX);
+    vkResetFences(m_device, 1, &m_in_flight_fence);
+
+    // Acquire an image from the swap chain
+    u32 image_index;
+    VkResult result = vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphore, VK_NULL_HANDLE, &image_index);
+    //    RNDR_ASSERT(result == VK_SUCCESS);
+
+    // Record the command buffer
+    vkResetCommandBuffer(m_command_buffer, 0);
+    RecordCommandBuffer(m_command_buffer, image_index);
+
+    // Submit the command buffer
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+    const VkSemaphore wait_semaphores[] = {m_image_available_semaphore};
+    const VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submit_info.waitSemaphoreCount = 1;
+    submit_info.pWaitSemaphores = wait_semaphores;
+    submit_info.pWaitDstStageMask = wait_stages;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &m_command_buffer;
+
+    VkSemaphore signal_semaphores[] = {m_render_finished_semaphore};
+    submit_info.signalSemaphoreCount = 1;
+    submit_info.pSignalSemaphores = signal_semaphores;
+
+    [[maybe_unused]] const VkResult vk_result = vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fence);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+
+    VkPresentInfoKHR present_info{};
+    present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present_info.waitSemaphoreCount = 1;
+    present_info.pWaitSemaphores = signal_semaphores;
+
+    const VkSwapchainKHR swap_chains[] = {m_swap_chain};
+    present_info.swapchainCount = 1;
+    present_info.pSwapchains = swap_chains;
+    present_info.pImageIndices = &image_index;
+    present_info.pResults = nullptr;
+
+    result = vkQueuePresentKHR(m_present_queue, &present_info);
+    //    RNDR_ASSERT(result == VK_SUCCESS);
+}
+
+void VulkanRenderer::CreateSyncObjects()
+{
+    VkSemaphoreCreateInfo semaphore_info{};
+    semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    VkFenceCreateInfo fence_info{};
+    fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    [[maybe_unused]] VkResult vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphore);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphore);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    vk_result = vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fence);
+    RNDR_ASSERT(vk_result == VK_SUCCESS);
 }
