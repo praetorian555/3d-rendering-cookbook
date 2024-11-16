@@ -21,6 +21,8 @@
 
 #include "types.h"
 
+static constexpr i32 k_max_frames_in_flight = 2;
+
 void Run();
 int main()
 {
@@ -81,7 +83,7 @@ private:
     VkShaderModule CreateShaderModule(const Opal::DynamicArray<u8>& code);
     void CreateFrameBuffers();
     void CreateCommandPool();
-    void CreateCommandBuffer();
+    void CreateCommandBuffers();
     void CreateSyncObjects();
 
     void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index);
@@ -107,13 +109,14 @@ private:
     VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
     Opal::DynamicArray<VkFramebuffer> m_swap_chain_frame_buffers;
     VkCommandPool m_command_pool = VK_NULL_HANDLE;
-    VkCommandBuffer m_command_buffer = VK_NULL_HANDLE;
-    VkSemaphore m_image_available_semaphore = VK_NULL_HANDLE;
-    VkSemaphore m_render_finished_semaphore = VK_NULL_HANDLE;
-    VkFence m_in_flight_fence;
+    Opal::DynamicArray<VkCommandBuffer> m_command_buffers;
+    Opal::DynamicArray<VkSemaphore> m_image_available_semaphores;
+    Opal::DynamicArray<VkSemaphore> m_render_finished_semaphores;
+    Opal::DynamicArray<VkFence> m_in_flight_fences;
 
     Opal::DynamicArray<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
     Opal::DynamicArray<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    u32 m_current_frame_in_flight = 0;
 };
 
 void Run()
@@ -170,16 +173,19 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
     CreateGraphicsPipeline();
     CreateFrameBuffers();
     CreateCommandPool();
-    CreateCommandBuffer();
+    CreateCommandBuffers();
     CreateSyncObjects();
 }
 
 VulkanRenderer::~VulkanRenderer()
 {
     vkDeviceWaitIdle(m_device);
-    vkDestroySemaphore(m_device, m_render_finished_semaphore, nullptr);
-    vkDestroySemaphore(m_device, m_image_available_semaphore, nullptr);
-    vkDestroyFence(m_device, m_in_flight_fence, nullptr);
+    for (i32 i = 0; i < k_max_frames_in_flight; ++i)
+    {
+        vkDestroySemaphore(m_device, m_render_finished_semaphores[i], nullptr);
+        vkDestroySemaphore(m_device, m_image_available_semaphores[i], nullptr);
+        vkDestroyFence(m_device, m_in_flight_fences[i], nullptr);
+    }
     vkDestroyCommandPool(m_device, m_command_pool, nullptr);
     for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
     {
@@ -900,15 +906,17 @@ void VulkanRenderer::CreateCommandPool()
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 }
 
-void VulkanRenderer::CreateCommandBuffer()
+void VulkanRenderer::CreateCommandBuffers()
 {
+    m_command_buffers.Resize(k_max_frames_in_flight);
+
     VkCommandBufferAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     alloc_info.commandPool = m_command_pool;
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc_info.commandBufferCount = 1;
+    alloc_info.commandBufferCount = static_cast<u32>(m_command_buffers.GetSize());
 
-    [[maybe_unused]] const VkResult vk_result = vkAllocateCommandBuffers(m_device, &alloc_info, &m_command_buffer);
+    [[maybe_unused]] const VkResult vk_result = vkAllocateCommandBuffers(m_device, &alloc_info, m_command_buffers.GetData());
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 }
 
@@ -947,35 +955,36 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
 void VulkanRenderer::Draw()
 {
     // Wait for the previous frame to finish
-    vkWaitForFences(m_device, 1, &m_in_flight_fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(m_device, 1, &m_in_flight_fence);
+    vkWaitForFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight], VK_TRUE, UINT64_MAX);
+    vkResetFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight]);
 
     // Acquire an image from the swap chain
-    u32 image_index;
-    VkResult result = vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphore, VK_NULL_HANDLE, &image_index);
+    u32 image_index = 0;
+    VkResult result = vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame_in_flight],
+                                            VK_NULL_HANDLE, &image_index);
     //    RNDR_ASSERT(result == VK_SUCCESS);
 
     // Record the command buffer
-    vkResetCommandBuffer(m_command_buffer, 0);
-    RecordCommandBuffer(m_command_buffer, image_index);
+    vkResetCommandBuffer(m_command_buffers[m_current_frame_in_flight], 0);
+    RecordCommandBuffer(m_command_buffers[m_current_frame_in_flight], image_index);
 
     // Submit the command buffer
     VkSubmitInfo submit_info{};
     submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    const VkSemaphore wait_semaphores[] = {m_image_available_semaphore};
+    const VkSemaphore wait_semaphores[] = {m_image_available_semaphores[m_current_frame_in_flight]};
     const VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     submit_info.waitSemaphoreCount = 1;
     submit_info.pWaitSemaphores = wait_semaphores;
     submit_info.pWaitDstStageMask = wait_stages;
     submit_info.commandBufferCount = 1;
-    submit_info.pCommandBuffers = &m_command_buffer;
+    submit_info.pCommandBuffers = &m_command_buffers[m_current_frame_in_flight];
 
-    VkSemaphore signal_semaphores[] = {m_render_finished_semaphore};
+    VkSemaphore signal_semaphores[] = {m_render_finished_semaphores[m_current_frame_in_flight]};
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
-    [[maybe_unused]] const VkResult vk_result = vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fence);
+    [[maybe_unused]] const VkResult vk_result = vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fences[m_current_frame_in_flight]);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 
     VkPresentInfoKHR present_info{};
@@ -991,10 +1000,16 @@ void VulkanRenderer::Draw()
 
     result = vkQueuePresentKHR(m_present_queue, &present_info);
     //    RNDR_ASSERT(result == VK_SUCCESS);
+
+    m_current_frame_in_flight = (m_current_frame_in_flight + 1) % k_max_frames_in_flight;
 }
 
 void VulkanRenderer::CreateSyncObjects()
 {
+    m_image_available_semaphores.Resize(k_max_frames_in_flight);
+    m_render_finished_semaphores.Resize(k_max_frames_in_flight);
+    m_in_flight_fences.Resize(k_max_frames_in_flight);
+
     VkSemaphoreCreateInfo semaphore_info{};
     semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -1002,10 +1017,13 @@ void VulkanRenderer::CreateSyncObjects()
     fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    [[maybe_unused]] VkResult vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphore);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
-    vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphore);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
-    vk_result = vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fence);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    for (i32 i = 0; i < k_max_frames_in_flight; ++i)
+    {
+        [[maybe_unused]] VkResult vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphores[i]);
+        RNDR_ASSERT(vk_result == VK_SUCCESS);
+        vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]);
+        RNDR_ASSERT(vk_result == VK_SUCCESS);
+        vk_result = vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fences[i]);
+        RNDR_ASSERT(vk_result == VK_SUCCESS);
+    }
 }
