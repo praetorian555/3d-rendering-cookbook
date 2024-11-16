@@ -139,6 +139,7 @@ VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
     PickPhysicalDevice();
     CreateLogicalDevice();
     CreateSwapChain();
+    CreateImageViews();
 }
 
 VulkanRenderer::~VulkanRenderer()
