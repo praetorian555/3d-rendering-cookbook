@@ -59,7 +59,7 @@ struct VulkanRenderer
 
 private:
     void CreateInstance();
-    void SetupDebugMessanger();
+    void SetupDebugMessenger();
     void CreateSurface();
     void PickPhysicalDevice();
     bool IsDeviceSuitable(const VkPhysicalDevice& device);
@@ -134,7 +134,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 VulkanRenderer::VulkanRenderer(const VulkanRendererDesc& desc) : m_desc(desc)
 {
     CreateInstance();
-    SetupDebugMessanger();
+    SetupDebugMessenger();
     CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
@@ -287,7 +287,7 @@ VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMes
     }
 }
 
-void VulkanRenderer::SetupDebugMessanger()
+void VulkanRenderer::SetupDebugMessenger()
 {
     if (!m_desc.enable_validation_layers)
     {
