@@ -9,6 +9,7 @@
 #endif
 
 #include "opal/container/dynamic-array.h"
+#include "opal/container/in-place-array.h"
 #include "opal/container/ref.h"
 #include "opal/container/string.h"
 #include "opal/paths.h"
@@ -22,6 +23,42 @@
 #include "types.h"
 
 static constexpr i32 k_max_frames_in_flight = 2;
+
+struct Vertex
+{
+    Rndr::Vector2f pos;
+    Rndr::Vector3f color;
+
+    static VkVertexInputBindingDescription GetBindingDescription()
+    {
+        VkVertexInputBindingDescription binding_description{};
+        binding_description.binding = 0;
+        binding_description.stride = sizeof(Vertex);
+        binding_description.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        return binding_description;
+    }
+
+    static Opal::InPlaceArray<VkVertexInputAttributeDescription, 2> GetAttributeDescriptions()
+    {
+        Opal::InPlaceArray<VkVertexInputAttributeDescription, 2> attribute_descriptions{};
+
+        attribute_descriptions[0].binding = 0;
+        attribute_descriptions[0].location = 0;
+        attribute_descriptions[0].format = VK_FORMAT_R32G32_SFLOAT;
+        attribute_descriptions[0].offset = offsetof(Vertex, pos);
+
+        attribute_descriptions[1].binding = 0;
+        attribute_descriptions[1].location = 1;
+        attribute_descriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attribute_descriptions[1].offset = offsetof(Vertex, color);
+
+        return attribute_descriptions;
+    }
+};
+
+const Opal::DynamicArray<Vertex> vertices = {{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                                             {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
+                                             {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}};
 
 #define VK_CHECK(expr)                                  \
     do                                                  \
@@ -72,6 +109,7 @@ struct VulkanRenderer
     Opal::DynamicArray<const char*> GetRequiredInstanceExtensions();
 
     static Opal::DynamicArray<VkExtensionProperties> GetSupportedInstanceExtensions();
+    static u32 FindMemoryType(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties);
 
 private:
     void CreateInstance();
@@ -93,6 +131,7 @@ private:
     VkShaderModule CreateShaderModule(const Opal::DynamicArray<u8>& code);
     void CreateFrameBuffers();
     void CreateCommandPool();
+    void CreateVertexBuffer();
     void CreateCommandBuffers();
     void CreateSyncObjects();
     void CleanUpSwapChain();
@@ -120,6 +159,8 @@ private:
     VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
     Opal::DynamicArray<VkFramebuffer> m_swap_chain_frame_buffers;
     VkCommandPool m_command_pool = VK_NULL_HANDLE;
+    VkBuffer m_vertex_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory m_vertex_buffer_memory = VK_NULL_HANDLE;
     Opal::DynamicArray<VkCommandBuffer> m_command_buffers;
     Opal::DynamicArray<VkSemaphore> m_image_available_semaphores;
     Opal::DynamicArray<VkSemaphore> m_render_finished_semaphores;
@@ -198,6 +239,7 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
     CreateGraphicsPipeline();
     CreateFrameBuffers();
     CreateCommandPool();
+    CreateVertexBuffer();
     CreateCommandBuffers();
     CreateSyncObjects();
 }
@@ -211,6 +253,8 @@ VulkanRenderer::~VulkanRenderer()
         vkDestroySemaphore(m_device, m_image_available_semaphores[i], nullptr);
         vkDestroyFence(m_device, m_in_flight_fences[i], nullptr);
     }
+    vkDestroyBuffer(m_device, m_vertex_buffer, nullptr);
+    vkFreeMemory(m_device, m_vertex_buffer_memory, nullptr);
     vkDestroyCommandPool(m_device, m_command_pool, nullptr);
     for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
     {
@@ -655,7 +699,7 @@ void VulkanRenderer::CreateSwapChain()
         create_info.pQueueFamilyIndices = nullptr;
     }
 
-    create_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // swap_chain_support.capabilities.currentTransform;
+    create_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;  // swap_chain_support.capabilities.currentTransform;
     create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     create_info.presentMode = present_mode;
     // If set to VK_TRUE it means that we don't care about the color of the pixels if they are occluded by other window.
@@ -768,12 +812,15 @@ void VulkanRenderer::CreateGraphicsPipeline()
     dynamic_state_info.dynamicStateCount = static_cast<u32>(dynamic_states.GetSize());
     dynamic_state_info.pDynamicStates = dynamic_states.GetData();
 
+    VkVertexInputBindingDescription binding_description = Vertex::GetBindingDescription();
+    Opal::InPlaceArray<VkVertexInputAttributeDescription, 2> attribute_descriptions = Vertex::GetAttributeDescriptions();
+
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
     vertex_input_info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertex_input_info.vertexBindingDescriptionCount = 0;
-    vertex_input_info.pVertexBindingDescriptions = nullptr;
-    vertex_input_info.vertexAttributeDescriptionCount = 0;
-    vertex_input_info.pVertexAttributeDescriptions = nullptr;
+    vertex_input_info.vertexBindingDescriptionCount = 1;
+    vertex_input_info.pVertexBindingDescriptions = &binding_description;
+    vertex_input_info.vertexAttributeDescriptionCount = static_cast<u32>(attribute_descriptions.GetSize());
+    vertex_input_info.pVertexAttributeDescriptions = attribute_descriptions.GetData();
 
     VkPipelineInputAssemblyStateCreateInfo input_assembly{};
     input_assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
@@ -952,7 +999,12 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
     vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphics_pipeline);
     vkCmdSetViewport(command_buffer, 0, 1, &m_viewport);
     vkCmdSetScissor(command_buffer, 0, 1, &m_scissor);
-    vkCmdDraw(command_buffer, 3, 1, 0, 0);
+
+    VkBuffer vertex_buffers[] = {m_vertex_buffer};
+    VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
+
+    vkCmdDraw(command_buffer, static_cast<u32>(vertices.GetSize()), 1, 0, 0);
     vkCmdEndRenderPass(command_buffer);
 
     VK_CHECK(vkEndCommandBuffer(command_buffer));
@@ -1073,4 +1125,45 @@ void VulkanRenderer::CleanUpSwapChain()
 void VulkanRenderer::OnResize()
 {
     m_has_frame_buffer_resized = true;
+}
+
+void VulkanRenderer::CreateVertexBuffer()
+{
+    VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_info.size = sizeof(vertices[0]) * vertices.GetSize();
+    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VK_CHECK(vkCreateBuffer(m_device, &buffer_info, nullptr, &m_vertex_buffer));
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(m_device, m_vertex_buffer, &memory_requirements);
+
+    VkMemoryAllocateInfo alloc_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    alloc_info.allocationSize = buffer_info.size;
+    alloc_info.memoryTypeIndex = FindMemoryType(m_physical_device, memory_requirements.memoryTypeBits,
+                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    VK_CHECK(vkAllocateMemory(m_device, &alloc_info, nullptr, &m_vertex_buffer_memory));
+    VK_CHECK(vkBindBufferMemory(m_device, m_vertex_buffer, m_vertex_buffer_memory, 0));
+
+    void* data = nullptr;
+    VK_CHECK(vkMapMemory(m_device, m_vertex_buffer_memory, 0, buffer_info.size, 0, &data));
+    memcpy(data, vertices.GetData(), buffer_info.size);
+    vkUnmapMemory(m_device, m_vertex_buffer_memory);
+}
+
+u32 VulkanRenderer::FindMemoryType(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties)
+{
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+
+    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i)
+    {
+        if ((type_filter & (1 << i)) != 0 && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            return i;
+        }
+    }
+
+    return 0;
 }
