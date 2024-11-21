@@ -23,6 +23,13 @@
 
 static constexpr i32 k_max_frames_in_flight = 2;
 
+#define VK_CHECK(expr)                                 \
+    do                                                 \
+    {                                                  \
+        [[maybe_unused]] const VkResult result = expr; \
+        RNDR_ASSERT(result == VK_SUCCESS);             \
+    } while (0)
+
 void Run();
 int main()
 {
@@ -122,7 +129,7 @@ private:
 void Run()
 {
     Rndr::Window window(Rndr::WindowDesc{.width = 800, .height = 600, .name = "Vulkan Triangle Example"});
-    VulkanRendererDesc renderer_desc{.enable_validation_layers = true, .window = Opal::Ref(window)};
+    const VulkanRendererDesc renderer_desc{.enable_validation_layers = true, .window = Opal::Ref(window)};
     VulkanRenderer renderer(renderer_desc);
 
     f32 delta_seconds = 1 / 60.0f;
@@ -212,7 +219,7 @@ void VulkanRenderer::CreateInstance()
 {
     // Check if all the requested instance extensions are supported
     Opal::DynamicArray<const char*> required_extensions = GetRequiredInstanceExtensions();
-    Opal::DynamicArray<VkExtensionProperties> supported_extensions = GetSupportedInstanceExtensions();
+    const Opal::DynamicArray<VkExtensionProperties> supported_extensions = GetSupportedInstanceExtensions();
     for (const char* required_extension_name : required_extensions)
     {
         bool is_found = false;
@@ -283,8 +290,7 @@ void VulkanRenderer::CreateInstance()
         create_info.enabledLayerCount = 0;
     }
 
-    [[maybe_unused]] VkResult vk_result = vkCreateInstance(&create_info, nullptr, &m_instance);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateInstance(&create_info, nullptr, &m_instance));
 }
 
 Opal::DynamicArray<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
@@ -354,8 +360,7 @@ void VulkanRenderer::SetupDebugMessenger()
     create_info.pfnUserCallback = DebugCallback;
     create_info.pUserData = nullptr;
 
-    [[maybe_unused]] VkResult result = CreateDebugUtilsMessengerEXT(m_instance, &create_info, nullptr, &m_debug_messenger);
-    RNDR_ASSERT(result == VK_SUCCESS);
+    VK_CHECK(CreateDebugUtilsMessengerEXT(m_instance, &create_info, nullptr, &m_debug_messenger));
 }
 
 void VulkanRenderer::CreateSurface()
@@ -367,8 +372,7 @@ void VulkanRenderer::CreateSurface()
     surface_create_info.hwnd = m_desc.window->GetNativeWindowHandle();
     surface_create_info.hinstance = GetModuleHandle(nullptr);
 
-    [[maybe_unused]] VkResult vk_result = vkCreateWin32SurfaceKHR(m_instance, &surface_create_info, nullptr, &m_surface);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateWin32SurfaceKHR(m_instance, &surface_create_info, nullptr, &m_surface));
 #else
 #error Surface creation is not supported on this platform!
 #endif
@@ -405,27 +409,23 @@ bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
         return false;
     }
 
-    QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
-    bool are_queue_families_present = queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value();
+    const QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
+    const bool are_queue_families_present =
+        queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value();
     if (!are_queue_families_present)
     {
         return false;
     }
 
-    bool extensions_supported = CheckDeviceExtensionSupport(device);
+    const bool extensions_supported = CheckDeviceExtensionSupport(device);
     if (!extensions_supported)
     {
         return false;
     }
 
-    SwapChainSupportDetails swap_chain_details = QuerySwapChainSupport(device);
-    bool is_swap_chain_adequate = !swap_chain_details.formats.IsEmpty() && !swap_chain_details.present_modes.IsEmpty();
-    if (!is_swap_chain_adequate)
-    {
-        return false;
-    }
-
-    return true;
+    const SwapChainSupportDetails swap_chain_details = QuerySwapChainSupport(device);
+    const bool is_swap_chain_adequate = !swap_chain_details.formats.IsEmpty() && !swap_chain_details.present_modes.IsEmpty();
+    return is_swap_chain_adequate;
 }
 
 VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhysicalDevice& device)
@@ -444,7 +444,7 @@ VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhy
         {
             indices.graphics_family = i;
         }
-        VkBool32 present_support = false;
+        VkBool32 present_support = 0;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &present_support);
         if (present_support)
         {
@@ -479,7 +479,7 @@ void VulkanRenderer::CreateLogicalDevice()
         queue_create_infos.PushBack(queue_create_info);
     }
 
-    VkPhysicalDeviceFeatures device_features{};
+    const VkPhysicalDeviceFeatures device_features{};
 
     VkDeviceCreateInfo device_create_info{};
     device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -500,8 +500,7 @@ void VulkanRenderer::CreateLogicalDevice()
         device_create_info.enabledLayerCount = 0;
     }
 
-    [[maybe_unused]] VkResult vk_result = vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_device);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_device));
 
     vkGetDeviceQueue(m_device, queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
     vkGetDeviceQueue(m_device, queue_family_indices.present_family.value(), 0, &m_present_queue);
@@ -515,7 +514,7 @@ bool VulkanRenderer::CheckDeviceExtensionSupport(const VkPhysicalDevice& device)
     Opal::DynamicArray<VkExtensionProperties> available_extensions(extension_count);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.GetData());
 
-    Opal::DynamicArray<const char*> required_extensions = m_device_extensions;
+    const Opal::DynamicArray<const char*> required_extensions = m_device_extensions;
     for (const char* required_extension_name : m_device_extensions)
     {
         bool is_found = false;
@@ -549,12 +548,12 @@ VulkanRenderer::SwapChainSupportDetails VulkanRenderer::QuerySwapChainSupport(co
         vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, details.formats.GetData());
     }
 
-    u32 presentModeCount;
+    u32 presentModeCount = 0;
     vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, nullptr);
     if (presentModeCount != 0)
     {
         details.present_modes.Resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, details.present_modes.GetData());
+        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, details.present_modes.GetData()));
     }
 
     return details;
@@ -592,7 +591,7 @@ VkExtent2D VulkanRenderer::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
         return capabilities.currentExtent;
     }
 
-    Rndr::Vector2f size = m_desc.window->GetSize();
+    const Rndr::Vector2f size = m_desc.window->GetSize();
     VkExtent2D actual_extent = {static_cast<u32>(size.x), static_cast<u32>(size.y)};
     actual_extent.width = Math::Clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
     actual_extent.height = Math::Clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
@@ -602,10 +601,10 @@ VkExtent2D VulkanRenderer::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
 
 void VulkanRenderer::CreateSwapChain()
 {
-    SwapChainSupportDetails swap_chain_support = QuerySwapChainSupport(m_physical_device);
-    VkSurfaceFormatKHR surface_format = ChooseSwapSurfaceFormat(swap_chain_support.formats);
-    VkPresentModeKHR present_mode = ChooseSwapPresentMode(swap_chain_support.present_modes);
-    VkExtent2D extent = ChooseSwapExtent(swap_chain_support.capabilities);
+    const SwapChainSupportDetails swap_chain_support = QuerySwapChainSupport(m_physical_device);
+    const VkSurfaceFormatKHR surface_format = ChooseSwapSurfaceFormat(swap_chain_support.formats);
+    const VkPresentModeKHR present_mode = ChooseSwapPresentMode(swap_chain_support.present_modes);
+    const VkExtent2D extent = ChooseSwapExtent(swap_chain_support.capabilities);
 
     u32 image_count = swap_chain_support.capabilities.minImageCount + 1;
     if (swap_chain_support.capabilities.maxImageCount > 0 && image_count > swap_chain_support.capabilities.maxImageCount)
@@ -624,7 +623,7 @@ void VulkanRenderer::CreateSwapChain()
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
     QueueFamilyIndices indices = FindQueueFamilies(m_physical_device);
-    u32 queue_family_indices[] = {indices.graphics_family.value(), indices.present_family.value()};
+    const u32 queue_family_indices[] = {indices.graphics_family.value(), indices.present_family.value()};
     if (indices.graphics_family != indices.present_family)
     {
         create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
@@ -645,12 +644,11 @@ void VulkanRenderer::CreateSwapChain()
     create_info.clipped = VK_TRUE;
     create_info.oldSwapchain = VK_NULL_HANDLE;
 
-    [[maybe_unused]] VkResult vk_result = vkCreateSwapchainKHR(m_device, &create_info, nullptr, &m_swap_chain);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateSwapchainKHR(m_device, &create_info, nullptr, &m_swap_chain));
 
-    vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, nullptr);
+    VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, nullptr));
     m_swap_chain_images.Resize(image_count);
-    vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, m_swap_chain_images.GetData());
+    VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, m_swap_chain_images.GetData()));
 
     m_swap_chain_image_format = surface_format.format;
     m_swap_chain_extent = extent;
@@ -676,8 +674,7 @@ void VulkanRenderer::CreateImageViews()
         create_info.subresourceRange.baseArrayLayer = 0;
         create_info.subresourceRange.layerCount = 1;
 
-        [[maybe_unused]] VkResult vk_result = vkCreateImageView(m_device, &create_info, nullptr, &m_swap_chain_image_views[i]);
-        RNDR_ASSERT(vk_result == VK_SUCCESS);
+        VK_CHECK(vkCreateImageView(m_device, &create_info, nullptr, &m_swap_chain_image_views[i]));
     }
 }
 
@@ -719,8 +716,7 @@ void VulkanRenderer::CreateRenderPass()
     render_pass_info.dependencyCount = 1;
     render_pass_info.pDependencies = &dependency;
 
-    [[maybe_unused]] const VkResult vk_result = vkCreateRenderPass(m_device, &render_pass_info, nullptr, &m_render_pass);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateRenderPass(m_device, &render_pass_info, nullptr, &m_render_pass));
 }
 
 void VulkanRenderer::CreateGraphicsPipeline()
@@ -745,7 +741,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
     frag_shader_stage_info.module = fragment_shader_module;
     frag_shader_stage_info.pName = "main";
 
-    VkPipelineShaderStageCreateInfo shader_stages[] = {vert_shader_stage_info, frag_shader_stage_info};
+    const VkPipelineShaderStageCreateInfo shader_stages[] = {vert_shader_stage_info, frag_shader_stage_info};
 
     Opal::DynamicArray<VkDynamicState> dynamic_states = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
 
@@ -832,8 +828,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
     pipeline_layout_info.pushConstantRangeCount = 0;
     pipeline_layout_info.pPushConstantRanges = nullptr;
 
-    [[maybe_unused]] VkResult vk_result = vkCreatePipelineLayout(m_device, &pipeline_layout_info, nullptr, &m_pipeline_layout);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreatePipelineLayout(m_device, &pipeline_layout_info, nullptr, &m_pipeline_layout));
 
     VkGraphicsPipelineCreateInfo pipeline_info{};
     pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -853,8 +848,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
     pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
     pipeline_info.basePipelineIndex = -1;
 
-    vk_result = vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline));
 
     vkDestroyShaderModule(m_device, vertex_shader_module, nullptr);
     vkDestroyShaderModule(m_device, fragment_shader_module, nullptr);
@@ -867,8 +861,7 @@ VkShaderModule VulkanRenderer::CreateShaderModule(const Opal::DynamicArray<u8>& 
     create_info.codeSize = code.GetSize();
     create_info.pCode = reinterpret_cast<const u32*>(code.GetData());
     VkShaderModule shader_module = VK_NULL_HANDLE;
-    [[maybe_unused]] const VkResult vk_result = vkCreateShaderModule(m_device, &create_info, nullptr, &shader_module);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateShaderModule(m_device, &create_info, nullptr, &shader_module));
     return shader_module;
 }
 
@@ -877,7 +870,7 @@ void VulkanRenderer::CreateFrameBuffers()
     m_swap_chain_frame_buffers.Resize(m_swap_chain_image_views.GetSize());
     for (u32 i = 0; i < m_swap_chain_image_views.GetSize(); ++i)
     {
-        VkImageView attachments[] = {m_swap_chain_image_views[i]};
+        const VkImageView attachments[] = {m_swap_chain_image_views[i]};
 
         VkFramebufferCreateInfo frame_buffer_info{};
         frame_buffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -888,8 +881,7 @@ void VulkanRenderer::CreateFrameBuffers()
         frame_buffer_info.height = m_swap_chain_extent.height;
         frame_buffer_info.layers = 1;
 
-        [[maybe_unused]] VkResult vk_result = vkCreateFramebuffer(m_device, &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]);
-        RNDR_ASSERT(vk_result == VK_SUCCESS);
+        VK_CHECK(vkCreateFramebuffer(m_device, &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]));
     }
 }
 
@@ -902,8 +894,7 @@ void VulkanRenderer::CreateCommandPool()
     pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    [[maybe_unused]] VkResult vk_result = vkCreateCommandPool(m_device, &pool_info, nullptr, &m_command_pool);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkCreateCommandPool(m_device, &pool_info, nullptr, &m_command_pool));
 }
 
 void VulkanRenderer::CreateCommandBuffers()
@@ -916,8 +907,7 @@ void VulkanRenderer::CreateCommandBuffers()
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandBufferCount = static_cast<u32>(m_command_buffers.GetSize());
 
-    [[maybe_unused]] const VkResult vk_result = vkAllocateCommandBuffers(m_device, &alloc_info, m_command_buffers.GetData());
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkAllocateCommandBuffers(m_device, &alloc_info, m_command_buffers.GetData()));
 }
 
 void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
@@ -927,8 +917,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
     begin_info.flags = 0;
     begin_info.pInheritanceInfo = nullptr;
 
-    [[maybe_unused]] VkResult vk_result = vkBeginCommandBuffer(command_buffer, &begin_info);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkBeginCommandBuffer(command_buffer, &begin_info));
 
     VkRenderPassBeginInfo render_pass_info{};
     render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -948,8 +937,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
     vkCmdDraw(command_buffer, 3, 1, 0, 0);
     vkCmdEndRenderPass(command_buffer);
 
-    vk_result = vkEndCommandBuffer(command_buffer);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkEndCommandBuffer(command_buffer));
 }
 
 void VulkanRenderer::Draw()
@@ -984,7 +972,8 @@ void VulkanRenderer::Draw()
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
-    [[maybe_unused]] const VkResult vk_result = vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fences[m_current_frame_in_flight]);
+    [[maybe_unused]] const VkResult vk_result =
+        vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fences[m_current_frame_in_flight]);
     RNDR_ASSERT(vk_result == VK_SUCCESS);
 
     VkPresentInfoKHR present_info{};
@@ -1019,11 +1008,8 @@ void VulkanRenderer::CreateSyncObjects()
 
     for (i32 i = 0; i < k_max_frames_in_flight; ++i)
     {
-        [[maybe_unused]] VkResult vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphores[i]);
-        RNDR_ASSERT(vk_result == VK_SUCCESS);
-        vk_result = vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]);
-        RNDR_ASSERT(vk_result == VK_SUCCESS);
-        vk_result = vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fences[i]);
-        RNDR_ASSERT(vk_result == VK_SUCCESS);
+        VK_CHECK(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphores[i]));
+        VK_CHECK(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]));
+        VK_CHECK(vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fences[i]));
     }
 }
