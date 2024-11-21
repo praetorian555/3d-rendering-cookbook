@@ -23,11 +23,11 @@
 
 static constexpr i32 k_max_frames_in_flight = 2;
 
-#define VK_CHECK(expr)                                 \
-    do                                                 \
-    {                                                  \
-        [[maybe_unused]] const VkResult result = expr; \
-        RNDR_ASSERT(result == VK_SUCCESS);             \
+#define VK_CHECK(expr)                                  \
+    do                                                  \
+    {                                                   \
+        [[maybe_unused]] const VkResult result_ = expr; \
+        RNDR_ASSERT(result_ == VK_SUCCESS);             \
     } while (0)
 
 void Run();
@@ -65,6 +65,9 @@ struct VulkanRenderer
     ~VulkanRenderer();
 
     void Draw();
+    void RecreateSwapChain();
+
+    void OnResize();
 
     Opal::DynamicArray<const char*> GetRequiredInstanceExtensions();
 
@@ -92,6 +95,7 @@ private:
     void CreateCommandPool();
     void CreateCommandBuffers();
     void CreateSyncObjects();
+    void CleanUpSwapChain();
 
     void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index);
 
@@ -124,6 +128,7 @@ private:
     Opal::DynamicArray<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
     Opal::DynamicArray<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
     u32 m_current_frame_in_flight = 0;
+    bool m_has_frame_buffer_resized = false;
 };
 
 void Run()
@@ -131,6 +136,14 @@ void Run()
     Rndr::Window window(Rndr::WindowDesc{.width = 800, .height = 600, .name = "Vulkan Triangle Example"});
     const VulkanRendererDesc renderer_desc{.enable_validation_layers = true, .window = Opal::Ref(window)};
     VulkanRenderer renderer(renderer_desc);
+
+    window.on_resize.Bind(
+        [&renderer](i32 width, i32 height)
+        {
+            RNDR_UNUSED(width);
+            RNDR_UNUSED(height);
+            renderer.OnResize();
+        });
 
     f32 delta_seconds = 1 / 60.0f;
     while (!window.IsClosed())
@@ -140,7 +153,12 @@ void Run()
         window.ProcessEvents();
         Rndr::InputSystem::ProcessEvents(delta_seconds);
 
-        renderer.Draw();
+        // Detect if we are minimized
+        Rndr::Vector2f window_size = window.GetSize();
+        if (window_size.x != 0 && window_size.y != 0)
+        {
+            renderer.Draw();
+        }
 
         const f64 end_time = Opal::GetSeconds();
         delta_seconds = static_cast<f32>(end_time - start_time);
@@ -637,7 +655,7 @@ void VulkanRenderer::CreateSwapChain()
         create_info.pQueueFamilyIndices = nullptr;
     }
 
-    create_info.preTransform = swap_chain_support.capabilities.currentTransform;
+    create_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; // swap_chain_support.capabilities.currentTransform;
     create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     create_info.presentMode = present_mode;
     // If set to VK_TRUE it means that we don't care about the color of the pixels if they are occluded by other window.
@@ -944,13 +962,19 @@ void VulkanRenderer::Draw()
 {
     // Wait for the previous frame to finish
     vkWaitForFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight], VK_TRUE, UINT64_MAX);
-    vkResetFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight]);
 
     // Acquire an image from the swap chain
     u32 image_index = 0;
     VkResult result = vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame_in_flight],
                                             VK_NULL_HANDLE, &image_index);
-    //    RNDR_ASSERT(result == VK_SUCCESS);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        RecreateSwapChain();
+        return;
+    }
+    RNDR_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR);
+
+    vkResetFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight]);
 
     // Record the command buffer
     vkResetCommandBuffer(m_command_buffers[m_current_frame_in_flight], 0);
@@ -972,9 +996,7 @@ void VulkanRenderer::Draw()
     submit_info.signalSemaphoreCount = 1;
     submit_info.pSignalSemaphores = signal_semaphores;
 
-    [[maybe_unused]] const VkResult vk_result =
-        vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fences[m_current_frame_in_flight]);
-    RNDR_ASSERT(vk_result == VK_SUCCESS);
+    VK_CHECK(vkQueueSubmit(m_graphics_queue, 1, &submit_info, m_in_flight_fences[m_current_frame_in_flight]));
 
     VkPresentInfoKHR present_info{};
     present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -988,7 +1010,11 @@ void VulkanRenderer::Draw()
     present_info.pResults = nullptr;
 
     result = vkQueuePresentKHR(m_present_queue, &present_info);
-    //    RNDR_ASSERT(result == VK_SUCCESS);
+    if (m_has_frame_buffer_resized)
+    {
+        m_has_frame_buffer_resized = false;
+        RecreateSwapChain();
+    }
 
     m_current_frame_in_flight = (m_current_frame_in_flight + 1) % k_max_frames_in_flight;
 }
@@ -1012,4 +1038,39 @@ void VulkanRenderer::CreateSyncObjects()
         VK_CHECK(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]));
         VK_CHECK(vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fences[i]));
     }
+}
+void VulkanRenderer::RecreateSwapChain()
+{
+    vkDeviceWaitIdle(m_device);
+
+    CleanUpSwapChain();
+
+    // TODO: Potentially here we would also like to recreate render pass if the image format changes.
+    CreateSwapChain();
+
+    m_viewport.width = static_cast<f32>(m_swap_chain_extent.width);
+    m_viewport.height = static_cast<f32>(m_swap_chain_extent.height);
+    m_scissor.extent = m_swap_chain_extent;
+
+    CreateImageViews();
+    CreateFrameBuffers();
+}
+
+void VulkanRenderer::CleanUpSwapChain()
+{
+    for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
+    {
+        vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
+    }
+    for (const VkImageView& image_view : m_swap_chain_image_views)
+    {
+        vkDestroyImageView(m_device, image_view, nullptr);
+    }
+    vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
+    m_swap_chain = VK_NULL_HANDLE;
+}
+
+void VulkanRenderer::OnResize()
+{
+    m_has_frame_buffer_resized = true;
 }
