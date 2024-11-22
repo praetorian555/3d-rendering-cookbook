@@ -56,12 +56,12 @@ struct Vertex
     }
 };
 
-const Opal::DynamicArray<Vertex> vertices = {{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                                             {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-                                             {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-                                             {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
+const Opal::DynamicArray<Vertex> g_vertices = {{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                                               {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+                                               {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+                                               {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
 
-const Opal::DynamicArray<u16> indices = {0, 1, 2, 2, 3, 0};
+const Opal::DynamicArray<u16> g_indices = {0, 1, 2, 2, 3, 0};
 
 #define VK_CHECK(expr)                                  \
     do                                                  \
@@ -101,7 +101,7 @@ struct VulkanRenderer
         Opal::DynamicArray<VkPresentModeKHR> present_modes;
     };
 
-    VulkanRenderer(VulkanRendererDesc desc = {});
+    explicit VulkanRenderer(VulkanRendererDesc desc = {});
     ~VulkanRenderer();
 
     void Draw();
@@ -146,7 +146,6 @@ private:
 
     void CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkDeviceSize size);
 
-private:
     VulkanRendererDesc m_desc;
     VkInstance m_instance = VK_NULL_HANDLE;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
@@ -205,7 +204,7 @@ void Run()
         Rndr::InputSystem::ProcessEvents(delta_seconds);
 
         // Detect if we are minimized
-        Rndr::Vector2f window_size = window.GetSize();
+        const Rndr::Vector2f window_size = window.GetSize();
         if (window_size.x != 0 && window_size.y != 0)
         {
             renderer.Draw();
@@ -216,23 +215,23 @@ void Run()
     }
 }
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                                                    VkDebugUtilsMessageTypeFlagsEXT messageType,
-                                                    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
+                                                    VkDebugUtilsMessageTypeFlagsEXT message_type,
+                                                    const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
 {
-    RNDR_UNUSED(messageSeverity);
-    RNDR_UNUSED(messageType);
-    RNDR_UNUSED(pUserData);
-    RNDR_LOG_INFO("Validation Layer: %s", pCallbackData->pMessage);
+    RNDR_UNUSED(message_severity);
+    RNDR_UNUSED(message_type);
+    RNDR_UNUSED(user_data);
+    RNDR_LOG_INFO("Validation Layer: %s", callback_data->pMessage);
     return VK_FALSE;
 }
 
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
+void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks* allocator)
 {
-    auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+    auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
     if (func != nullptr)
     {
-        func(instance, debugMessenger, pAllocator);
+        func(instance, debug_messenger, allocator);
     }
 }
 
@@ -376,7 +375,7 @@ Opal::DynamicArray<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
         required_extension_names.Resize(m_desc.required_instance_extensions.GetSize());
         for (int i = 0; i < m_desc.required_instance_extensions.GetSize(); ++i)
         {
-            required_extension_names[i] = (const char*)m_desc.required_instance_extensions[i].GetData();
+            required_extension_names[i] = m_desc.required_instance_extensions[i].GetData();
         }
     }
     required_extension_names.PushBack("VK_KHR_surface");
@@ -405,18 +404,15 @@ Opal::DynamicArray<VkExtensionProperties> VulkanRenderer::GetSupportedInstanceEx
     return extensions;
 }
 
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-                                      const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
+VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* create_info,
+                                      const VkAllocationCallbacks* allocator, VkDebugUtilsMessengerEXT* debug_messenger)
 {
-    auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
     if (func != nullptr)
     {
-        return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
+        return func(instance, create_info, allocator, debug_messenger);
     }
-    else
-    {
-        return VK_ERROR_EXTENSION_NOT_PRESENT;
-    }
+    return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
 
 void VulkanRenderer::SetupDebugMessenger()
@@ -479,7 +475,7 @@ bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
     VkPhysicalDeviceFeatures features;
     vkGetPhysicalDeviceFeatures(device, &features);
 
-    if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || !features.geometryShader)
+    if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || features.geometryShader == 0)
     {
         return false;
     }
@@ -521,7 +517,7 @@ VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhy
         }
         VkBool32 present_support = 0;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &present_support);
-        if (present_support)
+        if (present_support != 0)
         {
             queue_family_indices.present_family = i;
         }
@@ -623,12 +619,12 @@ VulkanRenderer::SwapChainSupportDetails VulkanRenderer::QuerySwapChainSupport(co
         vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, details.formats.GetData());
     }
 
-    u32 presentModeCount = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, nullptr);
-    if (presentModeCount != 0)
+    u32 present_mode_count = 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &present_mode_count, nullptr);
+    if (present_mode_count != 0)
     {
-        details.present_modes.Resize(presentModeCount);
-        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &presentModeCount, details.present_modes.GetData()));
+        details.present_modes.Resize(present_mode_count);
+        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &present_mode_count, details.present_modes.GetData()));
     }
 
     return details;
@@ -825,7 +821,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
     dynamic_state_info.dynamicStateCount = static_cast<u32>(dynamic_states.GetSize());
     dynamic_state_info.pDynamicStates = dynamic_states.GetData();
 
-    VkVertexInputBindingDescription binding_description = Vertex::GetBindingDescription();
+    const VkVertexInputBindingDescription binding_description = Vertex::GetBindingDescription();
     Opal::InPlaceArray<VkVertexInputAttributeDescription, 2> attribute_descriptions = Vertex::GetAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertex_input_info{};
@@ -847,7 +843,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
     m_viewport.minDepth = 0.0f;
     m_viewport.maxDepth = 1.0f;
 
-    m_scissor.offset = {0, 0};
+    m_scissor.offset = {.x = 0, .y = 0};
     m_scissor.extent = m_swap_chain_extent;
 
     VkPipelineViewportStateCreateInfo viewport_state{};
@@ -1019,7 +1015,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
 
     vkCmdBindIndexBuffer(command_buffer, m_index_buffer, 0, VK_INDEX_TYPE_UINT16);
 
-    vkCmdDrawIndexed(command_buffer, static_cast<u32>(indices.GetSize()), 1, 0, 0, 0);
+    vkCmdDrawIndexed(command_buffer, static_cast<u32>(g_indices.GetSize()), 1, 0, 0, 0);
     vkCmdEndRenderPass(command_buffer);
 
     VK_CHECK(vkEndCommandBuffer(command_buffer));
@@ -1144,16 +1140,16 @@ void VulkanRenderer::OnResize()
 
 void VulkanRenderer::CreateVertexBuffer()
 {
-    const VkDeviceSize buffer_size = sizeof(vertices[0]) * vertices.GetSize();
+    const VkDeviceSize buffer_size = sizeof(g_vertices[0]) * g_vertices.GetSize();
 
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_buffer_memory;
+    VkBuffer staging_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory staging_buffer_memory = VK_NULL_HANDLE;
     CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                  staging_buffer, staging_buffer_memory);
 
     void* data = nullptr;
     VK_CHECK(vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data));
-    memcpy(data, vertices.GetData(), buffer_size);
+    memcpy(data, g_vertices.GetData(), buffer_size);
     vkUnmapMemory(m_device, staging_buffer_memory);
 
     CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -1209,7 +1205,7 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
     alloc_info.commandPool = m_command_pool;
     alloc_info.commandBufferCount = 1;
 
-    VkCommandBuffer command_buffer;
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
     VK_CHECK(vkAllocateCommandBuffers(m_device, &alloc_info, &command_buffer));
 
     VkCommandBufferBeginInfo begin_info{};
@@ -1237,16 +1233,16 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
 
 void VulkanRenderer::CreateIndexBuffer()
 {
-    const VkDeviceSize buffer_size = sizeof(indices[0]) * indices.GetSize();
+    const VkDeviceSize buffer_size = sizeof(g_indices[0]) * g_indices.GetSize();
 
-    VkBuffer staging_buffer;
-    VkDeviceMemory staging_buffer_memory;
+    VkBuffer staging_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory staging_buffer_memory = VK_NULL_HANDLE;
     CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                  staging_buffer, staging_buffer_memory);
 
     void* data = nullptr;
     VK_CHECK(vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data));
-    memcpy(data, indices.GetData(), buffer_size);
+    memcpy(data, g_indices.GetData(), buffer_size);
     vkUnmapMemory(m_device, staging_buffer_memory);
 
     CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
