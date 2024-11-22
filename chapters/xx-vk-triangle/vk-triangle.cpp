@@ -61,7 +61,7 @@ const Opal::DynamicArray<Vertex> vertices = {{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}
                                              {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
                                              {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
 
-const Opal::DynamicArray<u16> indices = { 0, 1, 2, 2, 3, 0 };
+const Opal::DynamicArray<u16> indices = {0, 1, 2, 2, 3, 0};
 
 #define VK_CHECK(expr)                                  \
     do                                                  \
@@ -1235,7 +1235,8 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
     vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
 }
 
-void VulkanRenderer::CreateIndexBuffer() {
+void VulkanRenderer::CreateIndexBuffer()
+{
     const VkDeviceSize buffer_size = sizeof(indices[0]) * indices.GetSize();
 
     VkBuffer staging_buffer;
