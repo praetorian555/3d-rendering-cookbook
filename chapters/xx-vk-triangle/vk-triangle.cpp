@@ -56,9 +56,12 @@ struct Vertex
     }
 };
 
-const Opal::DynamicArray<Vertex> vertices = {{{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-                                             {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-                                             {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}};
+const Opal::DynamicArray<Vertex> vertices = {{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+                                             {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+                                             {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+                                             {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}};
+
+const Opal::DynamicArray<u16> indices = { 0, 1, 2, 2, 3, 0 };
 
 #define VK_CHECK(expr)                                  \
     do                                                  \
@@ -134,6 +137,7 @@ private:
     void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& out_buffer,
                       VkDeviceMemory& out_buffer_memory);
     void CreateVertexBuffer();
+    void CreateIndexBuffer();
     void CreateCommandBuffers();
     void CreateSyncObjects();
     void CleanUpSwapChain();
@@ -165,6 +169,8 @@ private:
     VkCommandPool m_command_pool = VK_NULL_HANDLE;
     VkBuffer m_vertex_buffer = VK_NULL_HANDLE;
     VkDeviceMemory m_vertex_buffer_memory = VK_NULL_HANDLE;
+    VkBuffer m_index_buffer = VK_NULL_HANDLE;
+    VkDeviceMemory m_index_buffer_memory = VK_NULL_HANDLE;
     Opal::DynamicArray<VkCommandBuffer> m_command_buffers;
     Opal::DynamicArray<VkSemaphore> m_image_available_semaphores;
     Opal::DynamicArray<VkSemaphore> m_render_finished_semaphores;
@@ -244,6 +250,7 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
     CreateFrameBuffers();
     CreateCommandPool();
     CreateVertexBuffer();
+    CreateIndexBuffer();
     CreateCommandBuffers();
     CreateSyncObjects();
 }
@@ -257,6 +264,8 @@ VulkanRenderer::~VulkanRenderer()
         vkDestroySemaphore(m_device, m_image_available_semaphores[i], nullptr);
         vkDestroyFence(m_device, m_in_flight_fences[i], nullptr);
     }
+    vkDestroyBuffer(m_device, m_index_buffer, nullptr);
+    vkFreeMemory(m_device, m_index_buffer_memory, nullptr);
     vkDestroyBuffer(m_device, m_vertex_buffer, nullptr);
     vkFreeMemory(m_device, m_vertex_buffer_memory, nullptr);
     vkDestroyCommandPool(m_device, m_command_pool, nullptr);
@@ -496,7 +505,7 @@ bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
 
 VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhysicalDevice& device)
 {
-    QueueFamilyIndices indices;
+    QueueFamilyIndices queue_family_indices;
 
     u32 count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
@@ -508,18 +517,18 @@ VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhy
     {
         if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT)
         {
-            indices.graphics_family = i;
+            queue_family_indices.graphics_family = i;
         }
         VkBool32 present_support = 0;
         vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &present_support);
         if (present_support)
         {
-            indices.present_family = i;
+            queue_family_indices.present_family = i;
         }
         i++;
     }
 
-    return indices;
+    return queue_family_indices;
 }
 
 void VulkanRenderer::CreateLogicalDevice()
@@ -688,9 +697,9 @@ void VulkanRenderer::CreateSwapChain()
     create_info.imageArrayLayers = 1;
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    QueueFamilyIndices indices = FindQueueFamilies(m_physical_device);
-    const u32 queue_family_indices[] = {indices.graphics_family.value(), indices.present_family.value()};
-    if (indices.graphics_family != indices.present_family)
+    QueueFamilyIndices all_queue_family_indices = FindQueueFamilies(m_physical_device);
+    const u32 queue_family_indices[] = {all_queue_family_indices.graphics_family.value(), all_queue_family_indices.present_family.value()};
+    if (all_queue_family_indices.graphics_family != all_queue_family_indices.present_family)
     {
         create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = 2;
@@ -1008,7 +1017,9 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
 
-    vkCmdDraw(command_buffer, static_cast<u32>(vertices.GetSize()), 1, 0, 0);
+    vkCmdBindIndexBuffer(command_buffer, m_index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+    vkCmdDrawIndexed(command_buffer, static_cast<u32>(indices.GetSize()), 1, 0, 0, 0);
     vkCmdEndRenderPass(command_buffer);
 
     VK_CHECK(vkEndCommandBuffer(command_buffer));
@@ -1222,4 +1233,26 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
     vkQueueWaitIdle(m_graphics_queue);
 
     vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
+}
+
+void VulkanRenderer::CreateIndexBuffer() {
+    const VkDeviceSize buffer_size = sizeof(indices[0]) * indices.GetSize();
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 staging_buffer, staging_buffer_memory);
+
+    void* data = nullptr;
+    VK_CHECK(vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data));
+    memcpy(data, indices.GetData(), buffer_size);
+    vkUnmapMemory(m_device, staging_buffer_memory);
+
+    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                 m_index_buffer, m_index_buffer_memory);
+
+    CopyBuffer(staging_buffer, m_index_buffer, buffer_size);
+
+    vkDestroyBuffer(m_device, staging_buffer, nullptr);
+    vkFreeMemory(m_device, staging_buffer_memory, nullptr);
 }
