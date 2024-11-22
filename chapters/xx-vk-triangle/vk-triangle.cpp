@@ -131,6 +131,8 @@ private:
     VkShaderModule CreateShaderModule(const Opal::DynamicArray<u8>& code);
     void CreateFrameBuffers();
     void CreateCommandPool();
+    void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& out_buffer,
+                      VkDeviceMemory& out_buffer_memory);
     void CreateVertexBuffer();
     void CreateCommandBuffers();
     void CreateSyncObjects();
@@ -1129,26 +1131,13 @@ void VulkanRenderer::OnResize()
 
 void VulkanRenderer::CreateVertexBuffer()
 {
-    VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    buffer_info.size = sizeof(vertices[0]) * vertices.GetSize();
-    buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    VK_CHECK(vkCreateBuffer(m_device, &buffer_info, nullptr, &m_vertex_buffer));
-
-    VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(m_device, m_vertex_buffer, &memory_requirements);
-
-    VkMemoryAllocateInfo alloc_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    alloc_info.allocationSize = buffer_info.size;
-    alloc_info.memoryTypeIndex = FindMemoryType(m_physical_device, memory_requirements.memoryTypeBits,
-                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-    VK_CHECK(vkAllocateMemory(m_device, &alloc_info, nullptr, &m_vertex_buffer_memory));
-    VK_CHECK(vkBindBufferMemory(m_device, m_vertex_buffer, m_vertex_buffer_memory, 0));
+    const VkDeviceSize buffer_size = sizeof(vertices[0]) * vertices.GetSize();
+    CreateBuffer(buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 m_vertex_buffer, m_vertex_buffer_memory);
 
     void* data = nullptr;
-    VK_CHECK(vkMapMemory(m_device, m_vertex_buffer_memory, 0, buffer_info.size, 0, &data));
-    memcpy(data, vertices.GetData(), buffer_info.size);
+    VK_CHECK(vkMapMemory(m_device, m_vertex_buffer_memory, 0, buffer_size, 0, &data));
+    memcpy(data, vertices.GetData(), buffer_size);
     vkUnmapMemory(m_device, m_vertex_buffer_memory);
 }
 
@@ -1166,4 +1155,24 @@ u32 VulkanRenderer::FindMemoryType(VkPhysicalDevice physical_device, u32 type_fi
     }
 
     return 0;
+}
+
+void VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& out_buffer,
+                                  VkDeviceMemory& out_buffer_memory)
+{
+    VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    buffer_info.size = size;
+    buffer_info.usage = usage;
+    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    VK_CHECK(vkCreateBuffer(m_device, &buffer_info, nullptr, &out_buffer));
+
+    VkMemoryRequirements memory_requirements;
+    vkGetBufferMemoryRequirements(m_device, out_buffer, &memory_requirements);
+
+    VkMemoryAllocateInfo alloc_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+    alloc_info.allocationSize = memory_requirements.size;
+    alloc_info.memoryTypeIndex = FindMemoryType(m_physical_device, memory_requirements.memoryTypeBits, properties);
+
+    VK_CHECK(vkAllocateMemory(m_device, &alloc_info, nullptr, &out_buffer_memory));
+    VK_CHECK(vkBindBufferMemory(m_device, out_buffer, out_buffer_memory, 0));
 }
