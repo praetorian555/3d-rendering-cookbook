@@ -140,6 +140,8 @@ private:
 
     void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index);
 
+    void CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkDeviceSize size);
+
 private:
     VulkanRendererDesc m_desc;
     VkInstance m_instance = VK_NULL_HANDLE;
@@ -1132,13 +1134,24 @@ void VulkanRenderer::OnResize()
 void VulkanRenderer::CreateVertexBuffer()
 {
     const VkDeviceSize buffer_size = sizeof(vertices[0]) * vertices.GetSize();
-    CreateBuffer(buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 m_vertex_buffer, m_vertex_buffer_memory);
+
+    VkBuffer staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 staging_buffer, staging_buffer_memory);
 
     void* data = nullptr;
-    VK_CHECK(vkMapMemory(m_device, m_vertex_buffer_memory, 0, buffer_size, 0, &data));
+    VK_CHECK(vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data));
     memcpy(data, vertices.GetData(), buffer_size);
-    vkUnmapMemory(m_device, m_vertex_buffer_memory);
+    vkUnmapMemory(m_device, staging_buffer_memory);
+
+    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                 m_vertex_buffer, m_vertex_buffer_memory);
+
+    CopyBuffer(staging_buffer, m_vertex_buffer, buffer_size);
+
+    vkDestroyBuffer(m_device, staging_buffer, nullptr);
+    vkFreeMemory(m_device, staging_buffer_memory, nullptr);
 }
 
 u32 VulkanRenderer::FindMemoryType(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties)
@@ -1175,4 +1188,38 @@ void VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, V
 
     VK_CHECK(vkAllocateMemory(m_device, &alloc_info, nullptr, &out_buffer_memory));
     VK_CHECK(vkBindBufferMemory(m_device, out_buffer, out_buffer_memory, 0));
+}
+
+void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkDeviceSize size)
+{
+    VkCommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandPool = m_command_pool;
+    alloc_info.commandBufferCount = 1;
+
+    VkCommandBuffer command_buffer;
+    VK_CHECK(vkAllocateCommandBuffers(m_device, &alloc_info, &command_buffer));
+
+    VkCommandBufferBeginInfo begin_info{};
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(command_buffer, &begin_info);
+
+    VkBufferCopy copy_region{};
+    copy_region.size = size;
+    vkCmdCopyBuffer(command_buffer, source_buffer, dst_buffer, 1, &copy_region);
+
+    vkEndCommandBuffer(command_buffer);
+
+    VkSubmitInfo submit_info{};
+    submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1;
+    submit_info.pCommandBuffers = &command_buffer;
+
+    vkQueueSubmit(m_graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(m_graphics_queue);
+
+    vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
 }
