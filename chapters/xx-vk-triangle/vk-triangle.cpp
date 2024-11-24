@@ -17,6 +17,7 @@
 
 #include "rndr/file.h"
 #include "rndr/input.h"
+#include "rndr/projections.h"
 #include "rndr/rndr.h"
 #include "rndr/window.h"
 
@@ -54,6 +55,13 @@ struct Vertex
 
         return attribute_descriptions;
     }
+};
+
+struct UniformBufferObject
+{
+    Rndr::Matrix4x4f model;
+    Rndr::Matrix4x4f view;
+    Rndr::Matrix4x4f projection;
 };
 
 const Opal::DynamicArray<Vertex> g_vertices = {{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
@@ -130,6 +138,7 @@ private:
     void CreateSwapChain();
     void CreateImageViews();
     void CreateRenderPass();
+    void CreateDescriptorSetLayout();
     void CreateGraphicsPipeline();
     VkShaderModule CreateShaderModule(const Opal::DynamicArray<u8>& code);
     void CreateFrameBuffers();
@@ -138,13 +147,16 @@ private:
                       VkDeviceMemory& out_buffer_memory);
     void CreateVertexBuffer();
     void CreateIndexBuffer();
+    void CreateUniformBuffers();
+    void CreateDescriptorPool();
+    void CreateDescriptorSets();
     void CreateCommandBuffers();
     void CreateSyncObjects();
     void CleanUpSwapChain();
 
     void RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index);
-
     void CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkDeviceSize size);
+    void UpdateUniformBuffer(u32 current_frame);
 
     VulkanRendererDesc m_desc;
     VkInstance m_instance = VK_NULL_HANDLE;
@@ -162,6 +174,7 @@ private:
     VkViewport m_viewport;
     VkRect2D m_scissor;
     VkRenderPass m_render_pass = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_descriptor_set_layout = VK_NULL_HANDLE;
     VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
     VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
     Opal::DynamicArray<VkFramebuffer> m_swap_chain_frame_buffers;
@@ -174,6 +187,11 @@ private:
     Opal::DynamicArray<VkSemaphore> m_image_available_semaphores;
     Opal::DynamicArray<VkSemaphore> m_render_finished_semaphores;
     Opal::DynamicArray<VkFence> m_in_flight_fences;
+    Opal::DynamicArray<VkBuffer> m_uniform_buffers;
+    Opal::DynamicArray<VkDeviceMemory> m_uniform_buffers_memory;
+    Opal::DynamicArray<void*> m_mapped_uniform_buffers;
+    VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
+    Opal::DynamicArray<VkDescriptorSet> m_descriptor_sets;
 
     Opal::DynamicArray<const char*> m_validation_layers = {"VK_LAYER_KHRONOS_validation"};
     Opal::DynamicArray<const char*> m_device_extensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
@@ -245,11 +263,15 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
     CreateSwapChain();
     CreateImageViews();
     CreateRenderPass();
+    CreateDescriptorSetLayout();
     CreateGraphicsPipeline();
     CreateFrameBuffers();
     CreateCommandPool();
     CreateVertexBuffer();
     CreateIndexBuffer();
+    CreateUniformBuffers();
+    CreateDescriptorPool();
+    CreateDescriptorSets();
     CreateCommandBuffers();
     CreateSyncObjects();
 }
@@ -272,6 +294,13 @@ VulkanRenderer::~VulkanRenderer()
     {
         vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
     }
+    for (i32 i = 0; i < k_max_frames_in_flight; ++i)
+    {
+        vkDestroyBuffer(m_device, m_uniform_buffers[i], nullptr);
+        vkFreeMemory(m_device, m_uniform_buffers_memory[i], nullptr);
+    }
+    vkDestroyDescriptorPool(m_device, m_descriptor_pool, nullptr);
+    vkDestroyDescriptorSetLayout(m_device, m_descriptor_set_layout, nullptr);
     vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
     vkDestroyRenderPass(m_device, m_render_pass, nullptr);
@@ -858,7 +887,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f;
     rasterizer.depthBiasClamp = 0.0f;
@@ -897,8 +926,8 @@ void VulkanRenderer::CreateGraphicsPipeline()
 
     VkPipelineLayoutCreateInfo pipeline_layout_info{};
     pipeline_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipeline_layout_info.setLayoutCount = 0;
-    pipeline_layout_info.pSetLayouts = nullptr;
+    pipeline_layout_info.setLayoutCount = 1;
+    pipeline_layout_info.pSetLayouts = &m_descriptor_set_layout;
     pipeline_layout_info.pushConstantRangeCount = 0;
     pipeline_layout_info.pPushConstantRanges = nullptr;
 
@@ -1015,6 +1044,9 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
 
     vkCmdBindIndexBuffer(command_buffer, m_index_buffer, 0, VK_INDEX_TYPE_UINT16);
 
+    vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout, 0, 1,
+                            &m_descriptor_sets[m_current_frame_in_flight], 0, nullptr);
+
     vkCmdDrawIndexed(command_buffer, static_cast<u32>(g_indices.GetSize()), 1, 0, 0, 0);
     vkCmdEndRenderPass(command_buffer);
 
@@ -1042,6 +1074,8 @@ void VulkanRenderer::Draw()
     // Record the command buffer
     vkResetCommandBuffer(m_command_buffers[m_current_frame_in_flight], 0);
     RecordCommandBuffer(m_command_buffers[m_current_frame_in_flight], image_index);
+
+    UpdateUniformBuffer(m_current_frame_in_flight);
 
     // Submit the command buffer
     VkSubmitInfo submit_info{};
@@ -1252,4 +1286,103 @@ void VulkanRenderer::CreateIndexBuffer()
 
     vkDestroyBuffer(m_device, staging_buffer, nullptr);
     vkFreeMemory(m_device, staging_buffer_memory, nullptr);
+}
+
+void VulkanRenderer::CreateDescriptorSetLayout()
+{
+    VkDescriptorSetLayoutBinding ubo_layout_binding{};
+    ubo_layout_binding.binding = 0;
+    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    ubo_layout_binding.descriptorCount = 1;
+    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_info.bindingCount = 1;
+    layout_info.pBindings = &ubo_layout_binding;
+
+    VK_CHECK(vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_descriptor_set_layout));
+}
+
+void VulkanRenderer::CreateUniformBuffers()
+{
+    const VkDeviceSize buffer_size = sizeof(UniformBufferObject);
+
+    m_uniform_buffers.Resize(k_max_frames_in_flight);
+    m_uniform_buffers_memory.Resize(k_max_frames_in_flight);
+    m_mapped_uniform_buffers.Resize(k_max_frames_in_flight);
+
+    for (u32 i = 0; i < k_max_frames_in_flight; ++i)
+    {
+        CreateBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, m_uniform_buffers[i],
+                     m_uniform_buffers_memory[i]);
+        VK_CHECK(vkMapMemory(m_device, m_uniform_buffers_memory[i], 0, buffer_size, 0, &m_mapped_uniform_buffers[i]));
+    }
+}
+
+void VulkanRenderer::UpdateUniformBuffer(u32 current_frame)
+{
+    static f64 s_start_time = Opal::GetSeconds();
+
+    const f64 current_time = Opal::GetSeconds();
+    const f32 delta_time_since_program_start = static_cast<f32>(current_time - s_start_time);
+
+    UniformBufferObject ubo{};
+    ubo.model = Math::RotateZ(90.0f * delta_time_since_program_start);
+    ubo.model = Math::Transpose(ubo.model);
+    ubo.view = Math::LookAt_RH(Rndr::Point3f{2.0f, 2.0f, 2.0f}, Rndr::Point3f{0.0f, 0.0f, 0.0f}, Rndr::Vector3f{0.0f, 0.0f, 1.0f});
+    ubo.view = Math::Transpose(ubo.view);
+    const f32 aspect_ratio = static_cast<f32>(m_swap_chain_extent.width) / static_cast<f32>(m_swap_chain_extent.height);
+    ubo.projection = Rndr::PerspectiveVulkan(45.0f, aspect_ratio, 0.1f, 10.0f);
+    ubo.projection = Math::Transpose(ubo.projection);
+
+    memcpy(m_mapped_uniform_buffers[current_frame], &ubo, sizeof(ubo));
+}
+
+void VulkanRenderer::CreateDescriptorPool()
+{
+    VkDescriptorPoolSize pool_size{};
+    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    pool_size.descriptorCount = k_max_frames_in_flight;
+
+    VkDescriptorPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.poolSizeCount = 1;
+    pool_info.pPoolSizes = &pool_size;
+    pool_info.maxSets = k_max_frames_in_flight;
+
+    VK_CHECK(vkCreateDescriptorPool(m_device, &pool_info, nullptr, &m_descriptor_pool));
+}
+
+void VulkanRenderer::CreateDescriptorSets()
+{
+    Opal::DynamicArray<VkDescriptorSetLayout> layouts(k_max_frames_in_flight, m_descriptor_set_layout);
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = m_descriptor_pool;
+    alloc_info.descriptorSetCount = k_max_frames_in_flight;
+    alloc_info.pSetLayouts = layouts.GetData();
+
+    m_descriptor_sets.Resize(k_max_frames_in_flight);
+    VK_CHECK(vkAllocateDescriptorSets(m_device, &alloc_info, m_descriptor_sets.GetData()));
+
+    for (i32 i = 0; i < k_max_frames_in_flight; i++)
+    {
+        VkDescriptorBufferInfo buffer_info{};
+        buffer_info.buffer = m_uniform_buffers[i];
+        buffer_info.offset = 0;
+        buffer_info.range = sizeof(UniformBufferObject);
+
+        VkWriteDescriptorSet descriptor_write{};
+        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write.dstSet = m_descriptor_sets[i];
+        descriptor_write.dstBinding = 0;
+        descriptor_write.dstArrayElement = 0;
+        descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptor_write.descriptorCount = 1;
+        descriptor_write.pBufferInfo = &buffer_info;
+
+        vkUpdateDescriptorSets(m_device, 1, &descriptor_write, 0, nullptr);
+    }
 }
