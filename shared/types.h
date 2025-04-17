@@ -1,7 +1,15 @@
 #pragma once
 
 #include "opal/types.h"
-#include "math/math.h"
+#include "opal/math/matrix.h"
+#include "opal/math/point2.h"
+#include "opal/math/point3.h"
+#include "opal/math/point4.h"
+#include "opal/math/rotator.h"
+#include "opal/math/bounds2.h"
+#include "opal/math/bounds3.h"
+#include "opal/math/quaternion.h"
+#include "opal/math/dual-quaternion.h"
 
 using i8 = Opal::i8;
 using i16 = Opal::i16;
@@ -22,18 +30,19 @@ using char8 = Opal::char8;
 using char16 = Opal::char16;
 using uchar32 = Opal::uchar32;
 
-using Point2f = Math::Point2<float>;
-using Point3f = Math::Point3<float>;
-using Point4f = Math::Point4<float>;
-using Vector2f = Math::Vector2<float>;
-using Vector3f = Math::Vector3<float>;
-using Vector4f = Math::Vector4<float>;
-using Normal3f = Math::Normal3<float>;
-using Matrix4x4f = Math::Matrix4x4<float>;
-using Rotatorf = Math::Rotator<float>;
-using Quaternionf = Math::Quaternion<float>;
-using Bounds2f = Math::Bounds2<float>;
-using Bounds3f = Math::Bounds3<float>;
+using Point2f = Opal::Point2<f32>;
+using Point3f = Opal::Point3<f32>;
+using Point4f = Opal::Point4<f32>;
+using Vector2f = Opal::Vector2<f32>;
+using Vector3f = Opal::Vector3<f32>;
+using Vector4f = Opal::Vector4<f32>;
+using Normal3f = Opal::Normal3<f32>;
+using Matrix4x4f = Opal::Matrix4x4<f32>;
+using Rotatorf = Opal::Rotator<f32>;
+using Quatf = Opal::Quaternion<f32>;
+using DualQuatf = Opal::DualQuaternion<f32>;
+using Bounds2f = Opal::Bounds2<f32>;
+using Bounds3f = Opal::Bounds3<f32>;
 
-using Point2i = Math::Point2<int32_t>;
-using Vector2i = Math::Vector2<int32_t>;
+using Point2i = Opal::Point2<i32>;
+using Vector2i = Opal::Vector2<i32>;

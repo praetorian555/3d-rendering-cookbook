@@ -24,7 +24,7 @@ set(RNDR_SHARED_LIBS OFF)
 FetchContent_Declare(
         rndr
         GIT_REPOSITORY https://github.com/praetorian555/rndr
-        GIT_TAG        master
+        GIT_TAG master
 )
 FetchContent_MakeAvailable(rndr)
 
@@ -163,7 +163,7 @@ set(SHARED_FILES
         shared/stb_image.cpp)
 add_library(shared STATIC ${SHARED_FILES})
 target_link_libraries(shared PRIVATE rencook_options rencook_warnings)
-target_link_libraries(shared PUBLIC rndr math opal imgui etc2comp assimp meshoptimizer gli)
+target_link_libraries(shared PUBLIC rndr imgui etc2comp assimp meshoptimizer gli)
 target_include_directories(shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/shared)
 target_compile_definitions(shared PUBLIC -DASSETS_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/assets/")
 

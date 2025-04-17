@@ -122,8 +122,8 @@ bool Mesh::UpdateBoundingBoxes(MeshData& mesh_data)
         const MeshDescription& mesh_desc = mesh_data.meshes[i];
         const int64_t index_count = mesh_desc.GetLodIndicesCount(0);
 
-        Point3f min(Math::k_largest_float);
-        Point3f max(Math::k_smallest_float);
+        Point3f min(Opal::k_largest_float);
+        Point3f max(Opal::k_smallest_float);
 
         uint32_t* index_buffer = reinterpret_cast<uint32_t*>(mesh_data.index_buffer_data.GetData());
         float* vertex_buffer = reinterpret_cast<float*>(mesh_data.vertex_buffer_data.GetData());
@@ -131,8 +131,8 @@ bool Mesh::UpdateBoundingBoxes(MeshData& mesh_data)
         {
             const int64_t vertex_offset = mesh_desc.vertex_offset + index_buffer[mesh_desc.index_offset + j];
             const float* vertex = vertex_buffer + vertex_offset * (mesh_desc.vertex_size / sizeof(float));
-            min = Math::Min(min, Point3f(vertex[0], vertex[1], vertex[2]));
-            max = Math::Max(max, Point3f(vertex[0], vertex[1], vertex[2]));
+            min = Opal::Min(min, Point3f(vertex[0], vertex[1], vertex[2]));
+            max = Opal::Max(max, Point3f(vertex[0], vertex[1], vertex[2]));
         }
 
         mesh_data.bounding_boxes[i] = Bounds3f(min, max);

@@ -17,7 +17,7 @@ namespace
 {
 Opal::StringUtf8 ConvertTexture(
     const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
-    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
+    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::StringHash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
     const Opal::DynamicArray<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path);
 bool SetupMaterial(MaterialDescription& in_out_material, Opal::DynamicArray<Rndr::Texture>& out_textures,
                    const Rndr::GraphicsContext& graphics_context, const Opal::DynamicArray<Opal::StringUtf8>& in_texture_paths);
@@ -28,7 +28,7 @@ bool Material::ConvertAndDownscaleTextures(const Opal::DynamicArray<MaterialDesc
                                            Opal::DynamicArray<Opal::StringUtf8>& texture_paths,
                                            const Opal::DynamicArray<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
 {
-    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>> albedo_map_path_to_opacity_map_index(texture_paths.GetSize());
+    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::StringHash<Opal::StringUtf8>> albedo_map_path_to_opacity_map_index(texture_paths.GetSize());
     for (const MaterialDescription& mat_desc : materials)
     {
         if (mat_desc.opacity_texture != k_invalid_image_id && mat_desc.albedo_texture != k_invalid_image_id)
@@ -253,7 +253,7 @@ bool SetupMaterial(MaterialDescription& in_out_material, Opal::DynamicArray<Rndr
 
 Opal::StringUtf8 ConvertTexture(
     const Opal::StringUtf8& base_path, const Opal::StringUtf8& texture_path,
-    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::Hash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
+    Opal::HashMap<Opal::StringUtf8, uint64_t, Opal::StringHash<Opal::StringUtf8>>& albedo_texture_path_to_opacity_texture_index,
     const Opal::DynamicArray<Opal::StringUtf8>& opacity_textures, const Opal::StringUtf8& out_base_path)
 {
     constexpr int32_t k_max_new_width = 512;

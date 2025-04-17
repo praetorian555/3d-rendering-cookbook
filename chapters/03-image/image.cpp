@@ -6,12 +6,14 @@
 
 #include "opal/paths.h"
 #include "opal/time.h"
+#include "opal/math/transform.h"
 
 #include "rndr/file.h"
 #include "rndr/input.h"
 #include "rndr/render-api.h"
 #include "rndr/rndr.h"
 #include "rndr/window.h"
+#include "rndr/projections.h"
 
 #include "imgui-wrapper.h"
 #include "types.h"
@@ -27,15 +29,14 @@ void Run();
  *    5. Compress image using ETC2.
  *    6. Use ImGui.
  */
-int main()
-{
+int main() {
     Rndr::Init({.enable_input_system = true});
     Run();
     Rndr::Destroy();
 }
 
-static const char8* const g_vertex_shader_source =
-    R"(
+static const char8 *const g_vertex_shader_source =
+        R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -59,8 +60,8 @@ void main()
 }
 )";
 
-static const char8* const g_pixel_shader_source =
-    R"(
+static const char8 *const g_pixel_shader_source =
+        R"(
 #version 460 core
 layout (location=0) in vec2 uv;
 layout (location=0) out vec4 out_FragColor;
@@ -71,13 +72,11 @@ void main()
 };
 )";
 
-struct PerFrameData
-{
+struct PerFrameData {
     Rndr::Matrix4x4f mvp;
 };
 
-void Run()
-{
+void Run() {
     Rndr::Window window({.width = 800, .height = 600, .name = "Image Example"});
     Rndr::GraphicsContext graphics_context({.window_handle = window.GetNativeWindowHandle()});
     RNDR_ASSERT(graphics_context.IsValid());
@@ -95,7 +94,10 @@ void Run()
     constexpr i32 k_per_frame_size = sizeof(PerFrameData);
     Rndr::Buffer per_frame_buffer(
         graphics_context,
-        {.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = k_per_frame_size, .stride = k_per_frame_size});
+        {
+            .type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = k_per_frame_size,
+            .stride = k_per_frame_size
+        });
     RNDR_ASSERT(per_frame_buffer.IsValid());
 
     const Opal::StringUtf8 image_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "brick-wall.jpg").GetValue();
@@ -112,11 +114,10 @@ void Run()
 
     constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_white;
 
-    Rndr::InputContext& input_ctx = Rndr::InputSystem::GetCurrentContext();
+    Rndr::InputContext &input_ctx = Rndr::InputSystem::GetCurrentContext();
     const Rndr::InputAction exit_action{"exit"};
     Rndr::InputActionData exit_action_data;
-    exit_action_data.callback = [&window](Rndr::InputPrimitive primitive, Rndr::InputTrigger trigger, f32 value)
-    {
+    exit_action_data.callback = [&window](Rndr::InputPrimitive primitive, Rndr::InputTrigger trigger, f32 value) {
         RNDR_UNUSED(primitive);
         RNDR_UNUSED(trigger);
         RNDR_UNUSED(value);
@@ -125,56 +126,61 @@ void Run()
     exit_action_data.native_window = window.GetNativeWindowHandle();
     input_ctx.AddAction(exit_action, exit_action_data);
     input_ctx.AddBindingToAction(
-        exit_action, Rndr::InputBinding{.primitive = Rndr::InputPrimitive::Keyboard_Esc, .trigger = Rndr::InputTrigger::ButtonReleased});
+        exit_action, Rndr::InputBinding{
+            .primitive = Rndr::InputPrimitive::Keyboard_Esc, .trigger = Rndr::InputTrigger::ButtonReleased
+        });
 
     const Rndr::InputAction screenshot_action{"screenshot"};
     Rndr::InputActionData screenshot_action_data;
     screenshot_action_data.callback =
-        [&graphics_context, &swap_chain](Rndr::InputPrimitive primitive, Rndr::InputTrigger trigger, f32 value)
-    {
-        RNDR_UNUSED(primitive);
-        RNDR_UNUSED(trigger);
-        RNDR_UNUSED(value);
-        Rndr::Bitmap image_to_save;
-        const bool is_read = graphics_context.ReadSwapChainColor(swap_chain, image_to_save);
-        RNDR_ASSERT(is_read);
-        RNDR_UNUSED(is_read);
-        Rndr::File::SaveImage(image_to_save, "screenshot.png");
+            [&graphics_context, &swap_chain](Rndr::InputPrimitive primitive, Rndr::InputTrigger trigger, f32 value) {
+                RNDR_UNUSED(primitive);
+                RNDR_UNUSED(trigger);
+                RNDR_UNUSED(value);
+                Rndr::Bitmap image_to_save;
+                const bool is_read = graphics_context.ReadSwapChainColor(swap_chain, image_to_save);
+                RNDR_ASSERT(is_read);
+                RNDR_UNUSED(is_read);
+                Rndr::File::SaveImage(image_to_save, "screenshot.png");
 
-        Opal::DynamicArray<f32> image_to_save_float(image_to_save.GetSize2D());
-        for (size_t i = 0; i < image_to_save.GetSize2D(); ++i)
-        {
-            image_to_save_float[i] = static_cast<f32>(image_to_save.GetData()[i]) / 255.0f;
-        }
+                Opal::DynamicArray<f32> image_to_save_float(image_to_save.GetSize2D());
+                for (size_t i = 0; i < image_to_save.GetSize2D(); ++i) {
+                    image_to_save_float[i] = static_cast<f32>(image_to_save.GetData()[i]) / 255.0f;
+                }
 
-        const Etc::Image::Format etc_format = Etc::Image::Format::RGB8;
-        const auto error_metric = Etc::ErrorMetric::BT709;
-        Etc::Image image(image_to_save_float.GetData(), image_to_save.GetWidth(), image_to_save.GetHeight(), error_metric);
+                const Etc::Image::Format etc_format = Etc::Image::Format::RGB8;
+                const auto error_metric = Etc::ErrorMetric::BT709;
+                Etc::Image image(image_to_save_float.GetData(), image_to_save.GetWidth(), image_to_save.GetHeight(),
+                                 error_metric);
 
-        image.Encode(etc_format, error_metric, ETCCOMP_DEFAULT_EFFORT_LEVEL, std::thread::hardware_concurrency(), 1024);
+                image.Encode(etc_format, error_metric, ETCCOMP_DEFAULT_EFFORT_LEVEL,
+                             std::thread::hardware_concurrency(), 1024);
 
-        Etc::File etc_file("screenshot.ktx", Etc::File::Format::KTX, etc_format, image.GetEncodingBits(), image.GetEncodingBitsBytes(),
-                           image.GetSourceWidth(), image.GetSourceHeight(), image.GetExtendedWidth(), image.GetExtendedHeight());
-        etc_file.Write();
-    };
+                Etc::File etc_file("screenshot.ktx", Etc::File::Format::KTX, etc_format, image.GetEncodingBits(),
+                                   image.GetEncodingBitsBytes(),
+                                   image.GetSourceWidth(), image.GetSourceHeight(), image.GetExtendedWidth(),
+                                   image.GetExtendedHeight());
+                etc_file.Write();
+            };
     screenshot_action_data.native_window = window.GetNativeWindowHandle();
     input_ctx.AddAction(screenshot_action, screenshot_action_data);
-    input_ctx.AddBindingToAction(screenshot_action, Rndr::InputBinding{.primitive = Rndr::InputPrimitive::Keyboard_F9,
-                                                                       .trigger = Rndr::InputTrigger::ButtonReleased});
+    input_ctx.AddBindingToAction(screenshot_action, Rndr::InputBinding{
+                                     .primitive = Rndr::InputPrimitive::Keyboard_F9,
+                                     .trigger = Rndr::InputTrigger::ButtonReleased
+                                 });
 
     ImGuiWrapper::Init(window, graphics_context, {.display_demo_window = true});
 
-    while (!window.IsClosed())
-    {
+    while (!window.IsClosed()) {
         window.ProcessEvents();
         Rndr::InputSystem::ProcessEvents(0);
 
         const f32 ratio = static_cast<f32>(window.GetWidth()) / static_cast<f32>(window.GetHeight());
         const f32 angle = static_cast<f32>(std::fmod(10 * Opal::GetSeconds(), 360.0));
-        const Rndr::Matrix4x4f t = Math::Rotate(angle, Rndr::Vector3f(0.0f, 0.0f, 1.0f));
-        const Rndr::Matrix4x4f p = Math::Orthographic_RH_N1(-ratio, ratio, -1.0f, 1.0f, -1.0f, 1.0f);
+        const Rndr::Matrix4x4f t = Opal::Rotate(angle, Rndr::Vector3f(0.0f, 0.0f, 1.0f));
+        const Rndr::Matrix4x4f p = Rndr::OrthographicOpenGL(-ratio, ratio, -1.0f, 1.0f, -1.0f, 1.0f);
         Rndr::Matrix4x4f mvp = p * t;
-        mvp = Math::Transpose(mvp);
+        mvp = Opal::Transpose(mvp);
         PerFrameData per_frame_data = {.mvp = mvp};
 
         graphics_context.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));

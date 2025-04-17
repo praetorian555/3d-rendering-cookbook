@@ -22,6 +22,7 @@
 #include "rndr/window.h"
 
 #include "types.h"
+#include "opal/math/transform.h"
 
 static constexpr i32 k_max_frames_in_flight = 2;
 
@@ -693,8 +694,8 @@ VkExtent2D VulkanRenderer::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
 
     const Rndr::Vector2f size = m_desc.window->GetSize();
     VkExtent2D actual_extent = {static_cast<u32>(size.x), static_cast<u32>(size.y)};
-    actual_extent.width = Math::Clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-    actual_extent.height = Math::Clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+    actual_extent.width = Opal::Clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
+    actual_extent.height = Opal::Clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
     return actual_extent;
 }
@@ -1329,13 +1330,13 @@ void VulkanRenderer::UpdateUniformBuffer(u32 current_frame)
     const f32 delta_time_since_program_start = static_cast<f32>(current_time - s_start_time);
 
     UniformBufferObject ubo{};
-    ubo.model = Math::RotateZ(90.0f * delta_time_since_program_start);
-    ubo.model = Math::Transpose(ubo.model);
-    ubo.view = Math::LookAt_RH(Rndr::Point3f{2.0f, 2.0f, 2.0f}, Rndr::Point3f{0.0f, 0.0f, 0.0f}, Rndr::Vector3f{0.0f, 0.0f, 1.0f});
-    ubo.view = Math::Transpose(ubo.view);
+    ubo.model = Opal::RotateZ(90.0f * delta_time_since_program_start);
+    ubo.model = Opal::Transpose(ubo.model);
+    ubo.view = Opal::LookAt_RH(Rndr::Point3f{2.0f, 2.0f, 2.0f}, Rndr::Point3f{0.0f, 0.0f, 0.0f}, Rndr::Vector3f{0.0f, 0.0f, 1.0f});
+    ubo.view = Opal::Transpose(ubo.view);
     const f32 aspect_ratio = static_cast<f32>(m_swap_chain_extent.width) / static_cast<f32>(m_swap_chain_extent.height);
     ubo.projection = Rndr::PerspectiveVulkan(45.0f, aspect_ratio, 0.1f, 10.0f);
-    ubo.projection = Math::Transpose(ubo.projection);
+    ubo.projection = Opal::Transpose(ubo.projection);
 
     memcpy(m_mapped_uniform_buffers[current_frame], &ubo, sizeof(ubo));
 }

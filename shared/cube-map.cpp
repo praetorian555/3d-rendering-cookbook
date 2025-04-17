@@ -100,18 +100,18 @@ bool CubeMap::ConvertEquirectangularMapToVerticalCross(const Rndr::Bitmap& in_bi
             {
                 const CubeMapFace face_id = static_cast<CubeMapFace>(face);
                 const Vector3f point = FaceCoordinatesToXYZ(x_result, y_result, face_id, face_size);
-                const f32 plane_distance = Math::Sqrt(point.x * point.x + point.y * point.y);
+                const f32 plane_distance = Opal::Sqrt(point.x * point.x + point.y * point.y);
                 const f32 theta = std::atan2(point.y, point.x);
                 const f32 phi = std::atan2(point.z, plane_distance);
                 //	f32 poi32 source coordinates
                 const f32 face_size_f32 = static_cast<f32>(face_size);
-                const f32 uf = 2.0f * face_size_f32 * (theta + Math::k_pi_float) / Math::k_pi_float;
-                const f32 vf = 2.0f * face_size_f32 * (Math::k_pi_float / 2.0f - phi) / Math::k_pi_float;
+                const f32 uf = 2.0f * face_size_f32 * (theta + Opal::k_pi_float) / Opal::k_pi_float;
+                const f32 vf = 2.0f * face_size_f32 * (Opal::k_pi_float / 2.0f - phi) / Opal::k_pi_float;
                 // 4-samples for bi-linear interpolation
-                const i32 u1 = Math::Clamp(static_cast<i32>(Math::Floor(uf)), 0, clamp_w);
-                const i32 v1 = Math::Clamp(static_cast<i32>(Math::Floor(vf)), 0, clamp_h);
-                const i32 u2 = Math::Clamp(u1 + 1, 0, clamp_w);
-                const i32 v2 = Math::Clamp(v1 + 1, 0, clamp_h);
+                const i32 u1 = Opal::Clamp(static_cast<i32>(Opal::Floor(uf)), 0, clamp_w);
+                const i32 v1 = Opal::Clamp(static_cast<i32>(Opal::Floor(vf)), 0, clamp_h);
+                const i32 u2 = Opal::Clamp(u1 + 1, 0, clamp_w);
+                const i32 v2 = Opal::Clamp(v1 + 1, 0, clamp_h);
                 // fractional part
                 const f32 s = uf - static_cast<f32>(u1);
                 const f32 t = vf - static_cast<f32>(v1);
@@ -231,10 +231,10 @@ bool CubeMap::ConvolveDiffuse(const Vector3f* in_data, i32 in_width, i32 in_heig
 
     for (i32 y = 0; y != out_height; y++)
     {
-        const f32 theta1 = static_cast<f32>(y) / static_cast<f32>(out_height) * Math::k_pi_float;
+        const f32 theta1 = static_cast<f32>(y) / static_cast<f32>(out_height) * Opal::k_pi_float;
         for (i32 x = 0; x != out_width; x++)
         {
-            const f32 phi1 = static_cast<f32>(x) / static_cast<f32>(out_width) * 2 * Math::k_pi_float;
+            const f32 phi1 = static_cast<f32>(x) / static_cast<f32>(out_width) * 2 * Opal::k_pi_float;
             const Vector3f v1 = Vector3f(sin(theta1) * cos(phi1), sin(theta1) * sin(phi1), cos(theta1));
             Vector3f color = Vector3f(0.0f);
             f32 weight = 0.0f;
@@ -243,10 +243,10 @@ bool CubeMap::ConvolveDiffuse(const Vector3f* in_data, i32 in_width, i32 in_heig
                 const Vector2f h = Hammersley2d(i, nb_monte_carlo_samples);
                 const i32 x1 = static_cast<i32>(floor(h.x * static_cast<f32>(in_width)));
                 const i32 y1 = static_cast<i32>(floor(h.y * static_cast<f32>(in_height)));
-                const f32 theta2 = static_cast<f32>(y1) / static_cast<f32>(in_height) * Math::k_pi_float;
-                const f32 phi2 = static_cast<f32>(x1) / static_cast<f32>(in_width) * 2 * Math::k_pi_float;
+                const f32 theta2 = static_cast<f32>(y1) / static_cast<f32>(in_height) * Opal::k_pi_float;
+                const f32 phi2 = static_cast<f32>(x1) / static_cast<f32>(in_width) * 2 * Opal::k_pi_float;
                 const Vector3f v2 = Vector3f(sin(theta2) * cos(phi2), sin(theta2) * sin(phi2), cos(theta2));
-                const f32 d = std::max(0.0f, Math::Dot(v1, v2));
+                const f32 d = Opal::Max(0.0f, Opal::Dot(v1, v2));
                 if (d > 0.01f)
                 {
                     color += scratch[y1 * in_width + x1] * d;

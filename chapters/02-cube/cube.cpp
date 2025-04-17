@@ -1,8 +1,10 @@
+#include "opal/time.h"
+#include "opal/math/transform.h"
+
 #include "rndr/render-api.h"
 #include "rndr/rndr.h"
 #include "rndr/window.h"
-
-#include "opal/time.h"
+#include "rndr/projections.h"
 
 #include "types.h"
 
@@ -126,11 +128,11 @@ void Run()
         window.ProcessEvents();
 
         const f32 ratio = static_cast<f32>(window.GetWidth()) / static_cast<float>(window.GetHeight());
-        const f32 angle = static_cast<f32>(Math::Mod(10 * Opal::GetSeconds(), 360.0));
-        const Matrix4x4f t = Math::Translate(Vector3f(0.0f, 0.0f, -3.5f)) * Math::Rotate(angle, Vector3f(1.0f, 1.0f, 1.0f));
-        const Matrix4x4f p = Math::Perspective_RH_N1(45.0f, ratio, 0.1f, 1000.0f);
+        const f32 angle = static_cast<f32>(Opal::Mod(10 * Opal::GetSeconds(), 360.0));
+        const Matrix4x4f t = Opal::Translate(Vector3f(0.0f, 0.0f, -3.5f)) * Opal::Rotate(angle, Vector3f(1.0f, 1.0f, 1.0f));
+        const Matrix4x4f p = Rndr::PerspectiveOpenGL(45.0f, ratio, 0.1f, 1000.0f);
         Matrix4x4f mvp = p * t;
-        mvp = Math::Transpose(mvp);
+        mvp = Opal::Transpose(mvp);
 
         per_frame_data.mvp = mvp;
         per_frame_data.is_wire_frame = 0;

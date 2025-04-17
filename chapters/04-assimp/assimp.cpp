@@ -7,12 +7,14 @@
 #include "opal/container/string.h"
 #include "opal/paths.h"
 #include "opal/time.h"
+#include "opal/math/transform.h"
 
 #include "rndr/input-layout-builder.h"
 #include "rndr/math.h"
 #include "rndr/render-api.h"
 #include "rndr/rndr.h"
 #include "rndr/window.h"
+#include "rndr/projections.h"
 
 #include "types.h"
 
@@ -26,15 +28,14 @@ void Run();
  *     4. Render wireframes.
  *     5. Use math transformations.
  */
-int main()
-{
+int main() {
     Rndr::Init();
     Run();
     Rndr::Destroy();
 }
 
-const char8* const g_shader_code_vertex =
-    R"(
+const char8 *const g_shader_code_vertex =
+        R"(
 #version 460 core
 layout(std140, binding = 0) uniform PerFrameData
 {
@@ -50,8 +51,8 @@ void main()
 }
 )";
 
-const char8* const g_shader_code_fragment =
-    R"(
+const char8 *const g_shader_code_fragment =
+        R"(
 #version 460 core
 layout (location=0) in vec3 color;
 layout (location=0) out vec4 out_FragColor;
@@ -61,34 +62,30 @@ void main()
 };
 )";
 
-struct PerFrameData
-{
+struct PerFrameData {
     Rndr::Matrix4x4f mvp;
     int is_wire_frame;
 };
+
 constexpr size_t k_per_frame_size = sizeof(PerFrameData);
 
-void Run()
-{
+void Run() {
     const Opal::StringUtf8 file_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck.gltf").GetValue();
-    const aiScene* scene = aiImportFile(file_path.GetData(), aiProcess_Triangulate);
-    if (scene == nullptr || !scene->HasMeshes())
-    {
+    const aiScene *scene = aiImportFile(file_path.GetData(), aiProcess_Triangulate);
+    if (scene == nullptr || !scene->HasMeshes()) {
         RNDR_LOG_ERROR("Failed to load mesh from file with error: %s", aiGetErrorString());
         RNDR_ASSERT(false);
         return;
     }
     RNDR_ASSERT(scene->HasMeshes());
-    const aiMesh* mesh = scene->mMeshes[0];
+    const aiMesh *mesh = scene->mMeshes[0];
     Opal::DynamicArray<Rndr::Point3f> positions;
-    for (unsigned int i = 0; i != mesh->mNumFaces; i++)
-    {
-        const aiFace& face = mesh->mFaces[i];
+    for (unsigned int i = 0; i != mesh->mNumFaces; i++) {
+        const aiFace &face = mesh->mFaces[i];
         Opal::InPlaceArray<size_t, 3> idx{face.mIndices[0], face.mIndices[1], face.mIndices[2]};
-        for (int j = 0; j != 3; j++)
-        {
+        for (int j = 0; j != 3; j++) {
             const aiVector3D v = mesh->mVertices[idx[j]];
-            positions.PushBack(Rndr::Point3f(v.x, v.y, v.z));  // NOLINT
+            positions.PushBack(Rndr::Point3f(v.x, v.y, v.z)); // NOLINT
         }
     }
     aiReleaseImport(scene);
@@ -105,49 +102,58 @@ void Run()
 
     constexpr size_t k_stride = sizeof(Rndr::Point3f);
     const Rndr::Buffer vertex_buffer(graphics_context,
-                                     {.type = Rndr::BufferType::Vertex,
-                                      .usage = Rndr::Usage::Default,
-                                      .size = static_cast<uint32_t>(k_stride * positions.GetSize()),
-                                      .stride = k_stride},
+                                     {
+                                         .type = Rndr::BufferType::Vertex,
+                                         .usage = Rndr::Usage::Default,
+                                         .size = static_cast<uint32_t>(k_stride * positions.GetSize()),
+                                         .stride = k_stride
+                                     },
                                      Opal::AsBytes(positions));
     RNDR_ASSERT(vertex_buffer.IsValid());
     Rndr::InputLayoutBuilder builder;
-    const Rndr::InputLayoutDesc input_layout_desc = builder.AddVertexBuffer(vertex_buffer, 0, Rndr::DataRepetition::PerVertex)
-                                                        .AppendElement(0, Rndr::PixelFormat::R32G32B32_FLOAT)
-                                                        .Build();
+    const Rndr::InputLayoutDesc input_layout_desc = builder.AddVertexBuffer(
+                vertex_buffer, 0, Rndr::DataRepetition::PerVertex)
+            .AppendElement(0, Rndr::PixelFormat::R32G32B32_FLOAT)
+            .Build();
 
-    const Rndr::Pipeline solid_pipeline(graphics_context, {.vertex_shader = &vertex_shader,
-                                                           .pixel_shader = &pixel_shader,
-                                                           .input_layout = input_layout_desc,
-                                                           .rasterizer = {.fill_mode = Rndr::FillMode::Solid},
-                                                           .depth_stencil = {.is_depth_enabled = true}});
+    const Rndr::Pipeline solid_pipeline(graphics_context, {
+                                            .vertex_shader = &vertex_shader,
+                                            .pixel_shader = &pixel_shader,
+                                            .input_layout = input_layout_desc,
+                                            .rasterizer = {.fill_mode = Rndr::FillMode::Solid},
+                                            .depth_stencil = {.is_depth_enabled = true}
+                                        });
     RNDR_ASSERT(solid_pipeline.IsValid());
     const Rndr::Pipeline wireframe_pipeline(
-        graphics_context, {.vertex_shader = &vertex_shader,
-                           .pixel_shader = &pixel_shader,
-                           .input_layout = input_layout_desc,
-                           .rasterizer = {.fill_mode = Rndr::FillMode::Wireframe, .depth_bias = -1.0, .slope_scaled_depth_bias = -1.0},
-                           .depth_stencil = {.is_depth_enabled = true}});
+        graphics_context, {
+            .vertex_shader = &vertex_shader,
+            .pixel_shader = &pixel_shader,
+            .input_layout = input_layout_desc,
+            .rasterizer = {.fill_mode = Rndr::FillMode::Wireframe, .depth_bias = -1.0, .slope_scaled_depth_bias = -1.0},
+            .depth_stencil = {.is_depth_enabled = true}
+        });
     RNDR_ASSERT(wireframe_pipeline.IsValid());
     Rndr::Buffer per_frame_buffer(
         graphics_context,
-        {.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = k_per_frame_size, .stride = k_per_frame_size});
+        {
+            .type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = k_per_frame_size,
+            .stride = k_per_frame_size
+        });
     constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_white;
 
     window.on_resize.Bind([&swap_chain](int32_t width, int32_t height) { swap_chain.SetSize(width, height); });
 
     const int32_t vertex_count = static_cast<int32_t>(positions.GetSize());
-    while (!window.IsClosed())
-    {
+    while (!window.IsClosed()) {
         window.ProcessEvents();
 
         const float ratio = static_cast<float>(window.GetWidth()) / static_cast<float>(window.GetHeight());
         const float angle = static_cast<float>(std::fmod(10 * Opal::GetSeconds(), 360.0));
-        const Rndr::Matrix4x4f t = Math::Translate(Rndr::Vector3f(0.0f, -0.5f, -1.5f)) *
-                                   Math::Rotate(angle, Rndr::Vector3f(0.0f, 1.0f, 0.0f)) * Math::RotateX(-90.0f);
-        const Rndr::Matrix4x4f p = Math::Perspective_RH_N1(45.0f, ratio, 0.1f, 1000.0f);
+        const Rndr::Matrix4x4f t = Opal::Translate(Rndr::Vector3f(0.0f, -0.5f, -1.5f)) *
+                                   Opal::Rotate(angle, Rndr::Vector3f(0.0f, 1.0f, 0.0f)) * Opal::RotateX(-90.0f);
+        const Rndr::Matrix4x4f p = Rndr::PerspectiveOpenGL(45.0f, ratio, 0.1f, 1000.0f);
         Rndr::Matrix4x4f mvp = p * t;
-        mvp = Math::Transpose(mvp);
+        mvp = Opal::Transpose(mvp);
         PerFrameData per_frame_data = {.mvp = mvp, .is_wire_frame = 0};
 
         graphics_context.UpdateBuffer(per_frame_buffer, Opal::AsBytes(per_frame_data));

@@ -83,8 +83,8 @@ public:
         m_instance_buffer = Rndr::Buffer(
             desc.graphics_context, {.type = Rndr::BufferType::ShaderStorage, .usage = Rndr::Usage::Dynamic, .size = sizeof(InstanceData)});
         RNDR_ASSERT(m_instance_buffer.IsValid());
-        Rndr::Matrix4x4f model_transform = Math::Translate(Rndr::Vector3f(0.0f, 0.0f, 0.0f)) * Math::RotateX(90.0f) * Math::Scale(1.0f);
-        model_transform = Math::Transpose(model_transform);
+        Rndr::Matrix4x4f model_transform = Opal::Translate(Rndr::Vector3f(0.0f, 0.0f, 0.0f)) * Opal::RotateX(90.0f) * Opal::Scale(1.0f);
+        model_transform = Opal::Transpose(model_transform);
         InstanceData instance_data = {.model = model_transform, .normal = model_transform};
         m_desc.graphics_context->UpdateBuffer(m_instance_buffer, Opal::AsBytes(instance_data));
         m_per_frame_buffer = Rndr::Buffer(
@@ -153,7 +153,7 @@ public:
 
     bool Render() override
     {
-        const Rndr::Matrix4x4f view_projection_transform = Math::Transpose(m_camera_transform);
+        const Rndr::Matrix4x4f view_projection_transform = Opal::Transpose(m_camera_transform);
         PerFrameData per_frame_data = {.view_projection = view_projection_transform, .camera_position = m_camera_position};
         m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(per_frame_data));
 

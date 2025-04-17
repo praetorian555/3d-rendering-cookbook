@@ -72,7 +72,7 @@ public:
                                    Opal::AsBytes(m_mesh_data.vertex_buffer_data));
         RNDR_ASSERT(m_vertex_buffer.IsValid());
 
-        Rndr::Matrix4x4f world_from_model = Math::Identity<f32>();
+        Rndr::Matrix4x4f world_from_model = Opal::Identity<f32>();
         m_instance_buffer.Initialize(
             desc.graphics_context,
             Rndr::BufferDesc{.type = Rndr::BufferType::Vertex, .size = sizeof(Rndr::Matrix4x4f), .stride = sizeof(Rndr::Matrix4x4f)},
@@ -114,7 +114,7 @@ public:
     bool Render() override
     {
         Rndr::Matrix4x4f clip_from_world = m_camera->FromWorldToNDC();
-        clip_from_world = Math::Transpose(clip_from_world);
+        clip_from_world = Opal::Transpose(clip_from_world);
         m_desc.graphics_context->UpdateBuffer(m_constant_buffer, Opal::AsBytes(clip_from_world));
 
         m_desc.graphics_context->BindPipeline(m_pipeline);

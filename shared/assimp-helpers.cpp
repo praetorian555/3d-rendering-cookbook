@@ -21,8 +21,9 @@ void Traverse(SceneDescription& out_scene, const aiScene* ai_scene, const aiNode
 
 Matrix4x4f AssimpHelpers::Convert(const aiMatrix4x4& ai_matrix)
 {
-    return {ai_matrix.a1, ai_matrix.a2, ai_matrix.a3, ai_matrix.a4, ai_matrix.b1, ai_matrix.b2, ai_matrix.b3, ai_matrix.b4,
-            ai_matrix.c1, ai_matrix.c2, ai_matrix.c3, ai_matrix.c4, ai_matrix.d1, ai_matrix.d2, ai_matrix.d3, ai_matrix.d4};
+    Matrix4x4f matrix;
+    memcpy(matrix.elements, &ai_matrix, sizeof(aiMatrix4x4));
+    return matrix;
 }
 
 bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scene, MeshAttributesToLoad attributes_to_load)
@@ -165,7 +166,7 @@ bool AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_description
     if (aiGetMaterialColor(&ai_material, AI_MATKEY_COLOR_AMBIENT, &ai_color) == AI_SUCCESS)
     {
         out_description.emissive_color = Vector4f(ai_color.r, ai_color.g, ai_color.b, ai_color.a);
-        out_description.emissive_color.a = Math::Clamp(out_description.emissive_color.a, 0.0f, 1.0f);
+        out_description.emissive_color.a = Opal::Clamp(out_description.emissive_color.a, 0.0f, 1.0f);
     }
     if (aiGetMaterialColor(&ai_material, AI_MATKEY_COLOR_EMISSIVE, &ai_color) == AI_SUCCESS)
     {
@@ -173,12 +174,12 @@ bool AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_description
         out_description.emissive_color.g += ai_color.g;
         out_description.emissive_color.b += ai_color.b;
         out_description.emissive_color.a += ai_color.a;
-        out_description.emissive_color.a = Math::Clamp(out_description.emissive_color.a, 0.0f, 1.0f);
+        out_description.emissive_color.a = Opal::Clamp(out_description.emissive_color.a, 0.0f, 1.0f);
     }
     if (aiGetMaterialColor(&ai_material, AI_MATKEY_COLOR_DIFFUSE, &ai_color) == AI_SUCCESS)
     {
         out_description.albedo_color = Vector4f(ai_color.r, ai_color.g, ai_color.b, ai_color.a);
-        out_description.albedo_color.a = Math::Clamp(out_description.albedo_color.a, 0.0f, 1.0f);
+        out_description.albedo_color.a = Opal::Clamp(out_description.albedo_color.a, 0.0f, 1.0f);
     }
 
     // Read opacity factor from the AI material and convert it to transparency factor. If opacity is 95% or more, the material is considered
@@ -188,7 +189,7 @@ bool AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_description
     if (aiGetMaterialFloat(&ai_material, AI_MATKEY_OPACITY, &opacity) == AI_SUCCESS)
     {
         out_description.transparency_factor = 1.0f - opacity;
-        out_description.transparency_factor = Math::Clamp(out_description.transparency_factor, 0.0f, 1.0f);
+        out_description.transparency_factor = Opal::Clamp(out_description.transparency_factor, 0.0f, 1.0f);
         if (out_description.transparency_factor >= 1.0f - k_opaqueness_threshold)
         {
             out_description.transparency_factor = 0.0f;
@@ -198,8 +199,8 @@ bool AssimpHelpers::ReadMaterialDescription(MaterialDescription& out_description
     // If AI material contains transparency factor as an RGB value, it will take precedence over the opacity factor.
     if (aiGetMaterialColor(&ai_material, AI_MATKEY_COLOR_TRANSPARENT, &ai_color) == AI_SUCCESS)
     {
-        opacity = Math::Max(Math::Max(ai_color.r, ai_color.g), ai_color.b);
-        out_description.transparency_factor = Math::Clamp(opacity, 0.0f, 1.0f);
+        opacity = Opal::Max(Opal::Max(ai_color.r, ai_color.g), ai_color.b);
+        out_description.transparency_factor = Opal::Clamp(opacity, 0.0f, 1.0f);
         if (out_description.transparency_factor >= 1.0f - k_opaqueness_threshold)
         {
             out_description.transparency_factor = 0.0f;

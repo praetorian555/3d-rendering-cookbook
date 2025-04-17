@@ -92,7 +92,7 @@ public:
         {
             const MeshDrawData& shape = m_scene_data.shapes[i];
             const Matrix4x4f model_transform = m_scene_data.scene_description.world_transforms[shape.transform_index];
-            const Matrix4x4f normal_transform = Math::Transpose(Math::Inverse(model_transform));
+            const Matrix4x4f normal_transform = Opal::Transpose(Opal::Inverse(model_transform));
             model_transforms_data[i] = {.model_transform = model_transform, .normal_transform = normal_transform};
         }
         m_model_transforms_buffer = Buffer(desc.graphics_context, Opal::ArrayView<const ModelData>(model_transforms_data),
@@ -163,9 +163,9 @@ public:
         RNDR_CPU_EVENT_SCOPED("Mesh rendering");
 
         // Rotate the mesh
-        const Rndr::Matrix4x4f t = Math::Scale(0.1f);
+        const Rndr::Matrix4x4f t = Opal::Scale(0.1f);
         Rndr::Matrix4x4f mvp = m_camera_transform * t;
-        mvp = Math::Transpose(mvp);
+        mvp = Opal::Transpose(mvp);
         PerFrameData per_frame_data = {.view_projection = mvp, .camera_position_world = m_camera_position};
         m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(per_frame_data));
 

@@ -15,6 +15,7 @@
 #include "rndr/rndr.h"
 #include "rndr/window.h"
 #include "rndr/trace.h"
+#include "rndr/projections.h"
 
 #include "assimp-helpers.h"
 #include "imgui-wrapper.h"
@@ -23,20 +24,17 @@
 
 void Run();
 
-int main()
-{
+int main() {
     Rndr::Init({.enable_input_system = true});
     Run();
     Rndr::Destroy();
     return 0;
 }
 
-struct PerFrameData
-{
+struct PerFrameData {
 };
 
-struct GameState
-{
+struct GameState {
     f32 light_fov = 60.0f;
     f32 light_distance = 12.0f;
     f32 light_inner_angle = 10.0f;
@@ -50,72 +48,83 @@ struct GameState
     Rndr::Point3f light_position;
 };
 
-class MeshContainer
-{
+class MeshContainer {
 public:
-    explicit MeshContainer(Rndr::GraphicsContext* graphics_context) : m_graphics_context(graphics_context)
-    {
+    explicit MeshContainer(Rndr::GraphicsContext *graphics_context) : m_graphics_context(graphics_context) {
         // Setup vertex and index buffers
         const Opal::StringUtf8 mesh_file_path = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck.gltf").GetValue();
-        [[maybe_unused]] bool status = AssimpHelpers::ReadMeshData(m_mesh_data, mesh_file_path, MeshAttributesToLoad::LoadAll);
+        [[maybe_unused]] bool status = AssimpHelpers::ReadMeshData(m_mesh_data, mesh_file_path,
+                                                                   MeshAttributesToLoad::LoadAll);
         RNDR_ASSERT(status);
         Rndr::ErrorCode err;
         err = Mesh::AddPlaneXZ(m_mesh_data, Rndr::Point3f(0.0f, 0.0f, 0.0f), 20.0f, MeshAttributesToLoad::LoadAll);
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         err = m_vertex_buffer.Initialize(
-            m_graphics_context, Rndr::BufferDesc{.type = Rndr::BufferType::ShaderStorage, .size = m_mesh_data.vertex_buffer_data.GetSize()},
+            m_graphics_context, Rndr::BufferDesc{
+                .type = Rndr::BufferType::ShaderStorage, .size = m_mesh_data.vertex_buffer_data.GetSize()
+            },
             Opal::AsBytes(m_mesh_data.vertex_buffer_data));
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
-        m_model_matrices.PushBack(Math::Identity<f32>() * Math::RotateY(-90.0f) * Math::RotateX(-90.0f) * Math::Scale(4.0f));
-        m_model_matrices[0] = Math::Transpose(m_model_matrices[0]);
-        m_model_matrices.PushBack(Math::Identity<f32>());
-        m_model_matrices[1] = Math::Transpose(m_model_matrices[1]);
+        m_model_matrices.PushBack(
+            Opal::Identity<f32>() * Opal::RotateY(-90.0f) * Opal::RotateX(-90.0f) * Opal::Scale(4.0f));
+        m_model_matrices[0] = Opal::Transpose(m_model_matrices[0]);
+        m_model_matrices.PushBack(Opal::Identity<f32>());
+        m_model_matrices[1] = Opal::Transpose(m_model_matrices[1]);
 
         err = m_model_buffer.Initialize(
             m_graphics_context,
-            Rndr::BufferDesc{.type = Rndr::BufferType::ShaderStorage, .usage = Rndr::Usage::Dynamic, .size = sizeof(Rndr::Matrix4x4f)});
+            Rndr::BufferDesc{
+                .type = Rndr::BufferType::ShaderStorage, .usage = Rndr::Usage::Dynamic, .size = sizeof(Rndr::Matrix4x4f)
+            });
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         err = m_index_buffer.Initialize(
             m_graphics_context,
-            Rndr::BufferDesc{.type = Rndr::BufferType::Index, .size = m_mesh_data.index_buffer_data.GetSize(), .stride = 4},
+            Rndr::BufferDesc{
+                .type = Rndr::BufferType::Index, .size = m_mesh_data.index_buffer_data.GetSize(), .stride = 4
+            },
             Opal::AsBytes(m_mesh_data.index_buffer_data));
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         // Setup input layout
         m_input_layout_desc = Rndr::InputLayoutBuilder()
-                                  .AddShaderStorage(m_vertex_buffer, 1)
-                                  .AddShaderStorage(m_model_buffer, 2)
-                                  .AddIndexBuffer(m_index_buffer)
-                                  .Build();
+                .AddShaderStorage(m_vertex_buffer, 1)
+                .AddShaderStorage(m_model_buffer, 2)
+                .AddIndexBuffer(m_index_buffer)
+                .Build();
 
         const Opal::StringUtf8 albedo_texture_path =
-            Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck-base-color.png").GetValue();
+                Opal::Paths::Combine(nullptr, ASSETS_ROOT, "duck-base-color.png").GetValue();
         Rndr::Bitmap bitmap = Rndr::File::ReadEntireImage(albedo_texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, true);
         RNDR_ASSERT(bitmap.IsValid());
         err = m_albedo_texture.Initialize(
             m_graphics_context,
-            {.width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(), .use_mips = true}, {},
+            {
+                .width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(),
+                .use_mips = true
+            }, {},
             Opal::ArrayView<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         const Opal::StringUtf8 brick_texture_path =
-            Opal::Paths::Combine(nullptr, ASSETS_ROOT, "brick-wall.jpg").GetValue();
+                Opal::Paths::Combine(nullptr, ASSETS_ROOT, "brick-wall.jpg").GetValue();
         bitmap = Rndr::File::ReadEntireImage(brick_texture_path, Rndr::PixelFormat::R8G8B8A8_UNORM, true);
         RNDR_ASSERT(bitmap.IsValid());
         err = m_brick_texture.Initialize(
             m_graphics_context,
-            {.width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(), .use_mips = true}, {},
+            {
+                .width = bitmap.GetWidth(), .height = bitmap.GetHeight(), .pixel_format = bitmap.GetPixelFormat(),
+                .use_mips = true
+            }, {},
             Opal::ArrayView<const u8>(bitmap.GetData(), bitmap.GetSize2D()));
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
     }
 
-    [[nodiscard]] const Rndr::InputLayoutDesc& GetInputLayoutDesc() const { return m_input_layout_desc; }
+    [[nodiscard]] const Rndr::InputLayoutDesc &GetInputLayoutDesc() const { return m_input_layout_desc; }
 
-    void Draw()
-    {
+    void Draw() {
         m_graphics_context->UpdateBuffer(m_model_buffer, Opal::AsBytes(m_model_matrices[0]));
         m_graphics_context->BindTexture(m_albedo_texture, 0);
         m_graphics_context->DrawIndices(Rndr::PrimitiveTopology::Triangle, m_mesh_data.meshes[0].lod_offsets[1], 1, 0);
@@ -137,20 +146,23 @@ private:
     Opal::DynamicArray<Rndr::Matrix4x4f> m_model_matrices;
 };
 
-class ShadowRenderer : public Rndr::RendererBase
-{
+class ShadowRenderer : public Rndr::RendererBase {
 public:
-    ShadowRenderer(const Opal::StringUtf8& name, const Rndr::RendererBaseDesc& desc, MeshContainer* mesh_container, GameState* game_state)
-        : RendererBase(name, desc), m_mesh_container(mesh_container), m_game_state(game_state)
-    {
+    ShadowRenderer(const Opal::StringUtf8 &name, const Rndr::RendererBaseDesc &desc, MeshContainer *mesh_container,
+                   GameState *game_state)
+        : RendererBase(name, desc), m_mesh_container(mesh_container), m_game_state(game_state) {
         // Setup shaders
         const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
         const Opal::StringUtf8 vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "shadow.vert");
         const Opal::StringUtf8 pixel_shader_contents = Rndr::File::ReadShader(shader_dir, "shadow.frag");
         Rndr::ErrorCode err =
-            m_vertex_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents});
+                m_vertex_shader.Initialize(m_desc.graphics_context, {
+                                               .type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents
+                                           });
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
-        err = m_pixel_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Fragment, .source = pixel_shader_contents});
+        err = m_pixel_shader.Initialize(m_desc.graphics_context, {
+                                            .type = Rndr::ShaderType::Fragment, .source = pixel_shader_contents
+                                        });
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         // Setup pipeline
@@ -169,30 +181,38 @@ public:
         m_frame_buffer = Rndr::FrameBuffer(
             m_desc.graphics_context,
             Rndr::FrameBufferDesc{
-                .color_attachments = {{.width = 1024, .height = 1024, .pixel_format = Rndr::PixelFormat::R8G8B8A8_UNORM}},
+                .color_attachments = {
+                    {.width = 1024, .height = 1024, .pixel_format = Rndr::PixelFormat::R8G8B8A8_UNORM}
+                },
                 .color_attachment_samplers = {{}},
                 .use_depth_stencil = true,
-                .depth_stencil_attachment = {.width = 1024, .height = 1024, .pixel_format = Rndr::PixelFormat::D24_UNORM_S8_UINT}});
+                .depth_stencil_attachment = {
+                    .width = 1024, .height = 1024, .pixel_format = Rndr::PixelFormat::D24_UNORM_S8_UINT
+                }
+            });
 
         m_per_frame_buffer.Initialize(
             m_desc.graphics_context,
-            Rndr::BufferDesc{.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = sizeof(Rndr::Matrix4x4f)});
+            Rndr::BufferDesc{
+                .type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = sizeof(Rndr::Matrix4x4f)
+            });
     }
 
-    bool Render() override
-    {
+    bool Render() override {
         RNDR_GPU_EVENT_SCOPED("ShadowRenderer::Render");
 
-        const Rndr::Point3f light_position = Math::RotateY(Math::Degrees(m_game_state->light_y_angle)) *
-                                             Math::RotateX(Math::Degrees(m_game_state->light_x_angle)) *
+        const Rndr::Point3f light_position = Opal::RotateY(Opal::Degrees(m_game_state->light_y_angle)) *
+                                             Opal::RotateX(Opal::Degrees(m_game_state->light_x_angle)) *
                                              Rndr::Point3f(0, 0, m_game_state->light_distance);
-        const Rndr::Matrix4x4f light_view = Math::LookAt_RH(light_position, Rndr::Point3f(0, 0, 0), Rndr::Vector3f(0, 1, 0));
+        const Rndr::Matrix4x4f light_view = Opal::LookAt_RH(light_position, Rndr::Point3f(0, 0, 0),
+                                                            Rndr::Vector3f(0, 1, 0));
         const Rndr::Matrix4x4f light_projection =
-            Math::Perspective_RH_N1(m_game_state->light_fov, 1.0f, m_game_state->light_near, m_game_state->light_far);
+                Rndr::PerspectiveOpenGL(m_game_state->light_fov, 1.0f, m_game_state->light_near,
+                                        m_game_state->light_far);
         Rndr::Matrix4x4f mvp = light_projection * light_view;
         m_game_state->light_clip_from_world = mvp;
         m_game_state->light_position = light_position;
-        mvp = Math::Transpose(mvp);  // OpenGL expects column-major matrices
+        mvp = Opal::Transpose(mvp); // OpenGL expects column-major matrices
 
         m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(mvp));
         m_desc.graphics_context->ClearFrameBufferColorAttachment(m_frame_buffer, 0, Rndr::Colors::k_black);
@@ -205,7 +225,7 @@ public:
         return true;
     }
 
-    const Rndr::FrameBuffer* GetFrameBuffer() const { return &m_frame_buffer; }
+    const Rndr::FrameBuffer *GetFrameBuffer() const { return &m_frame_buffer; }
 
 private:
     Opal::Ref<MeshContainer> m_mesh_container;
@@ -217,65 +237,70 @@ private:
     Rndr::Buffer m_per_frame_buffer;
 };
 
-class SceneRenderer : public Rndr::RendererBase
-{
+class SceneRenderer : public Rndr::RendererBase {
 public:
-    SceneRenderer(const Opal::StringUtf8& name, const Rndr::RendererBaseDesc& desc, MeshContainer* mesh_container, GameState* game_state,
-                  const Rndr::Texture* shadow_texture, Rndr::ProjectionCamera* camera)
+    SceneRenderer(const Opal::StringUtf8 &name, const Rndr::RendererBaseDesc &desc, MeshContainer *mesh_container,
+                  GameState *game_state,
+                  const Rndr::Texture *shadow_texture, Rndr::ProjectionCamera *camera)
         : RendererBase(name, desc),
           m_mesh_container(mesh_container),
           m_game_state(game_state),
           m_camera(camera),
-          m_shadow_texture(shadow_texture)
-    {
+          m_shadow_texture(shadow_texture) {
         // Setup shaders
         const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
         const Opal::StringUtf8 vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "scene-shadow.vert");
         const Opal::StringUtf8 pixel_shader_contents = Rndr::File::ReadShader(shader_dir, "scene-shadow.frag");
         Rndr::ErrorCode err =
-            m_vertex_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents});
+                m_vertex_shader.Initialize(m_desc.graphics_context, {
+                                               .type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents
+                                           });
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
-        err = m_pixel_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Fragment, .source = pixel_shader_contents});
+        err = m_pixel_shader.Initialize(m_desc.graphics_context, {
+                                            .type = Rndr::ShaderType::Fragment, .source = pixel_shader_contents
+                                        });
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         // Setup pipeline
         m_pipeline = Rndr::Pipeline(m_desc.graphics_context, {
-                                                                 .vertex_shader = &m_vertex_shader,
-                                                                 .pixel_shader = &m_pixel_shader,
-                                                                 .input_layout = m_mesh_container->GetInputLayoutDesc(),
-                                                                 .rasterizer = {.fill_mode = Rndr::FillMode::Solid},
-                                                                 .depth_stencil = {.is_depth_enabled = true},
-                                                             });
+                                        .vertex_shader = &m_vertex_shader,
+                                        .pixel_shader = &m_pixel_shader,
+                                        .input_layout = m_mesh_container->GetInputLayoutDesc(),
+                                        .rasterizer = {.fill_mode = Rndr::FillMode::Solid},
+                                        .depth_stencil = {.is_depth_enabled = true},
+                                    });
         RNDR_ASSERT(m_pipeline.IsValid());
 
         m_per_frame_buffer.Initialize(
             m_desc.graphics_context,
-            Rndr::BufferDesc{.type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = sizeof(PerFrameData)});
+            Rndr::BufferDesc{
+                .type = Rndr::BufferType::Constant, .usage = Rndr::Usage::Dynamic, .size = sizeof(PerFrameData)
+            });
     }
 
-    struct PerFrameData
-    {
+    struct PerFrameData {
         Rndr::Matrix4x4f clip_from_world;
         Rndr::Matrix4x4f light_clip_from_world;
         Rndr::Point4f camera_position;
-        Rndr::Vector4f light_angles;  // cos(inner), cos(outer), 0, 0
+        Rndr::Vector4f light_angles; // cos(inner), cos(outer), 0, 0
         Rndr::Point4f light_position;
     };
 
-    bool Render() override
-    {
+    bool Render() override {
         RNDR_GPU_EVENT_SCOPED("SceneRenderer::Render");
 
         PerFrameData per_frame_data;
-        per_frame_data.clip_from_world = Math::Transpose(m_camera->FromWorldToNDC());
-        per_frame_data.light_clip_from_world = Math::Transpose(m_game_state->light_clip_from_world);
+        per_frame_data.clip_from_world = Opal::Transpose(m_camera->FromWorldToNDC());
+        per_frame_data.light_clip_from_world = Opal::Transpose(m_game_state->light_clip_from_world);
         per_frame_data.camera_position =
-            Rndr::Point4f(m_camera->GetPosition().x, m_camera->GetPosition().y, m_camera->GetPosition().z, 1.0f);
+                Rndr::Point4f(m_camera->GetPosition().x, m_camera->GetPosition().y, m_camera->GetPosition().z, 1.0f);
         per_frame_data.light_angles =
-            Rndr::Vector4f(Math::Cos(Math::Radians(0.5f * m_game_state->light_fov)),
-                           Math::Cos(Math::Radians(0.5f * (m_game_state->light_fov - m_game_state->light_inner_angle))), 1.0f, 1.0f);
+                Rndr::Vector4f(Opal::Cos(Opal::Radians(0.5f * m_game_state->light_fov)),
+                               Opal::Cos(Opal::Radians(
+                                   0.5f * (m_game_state->light_fov - m_game_state->light_inner_angle))), 1.0f, 1.0f);
         per_frame_data.light_position =
-            Rndr::Point4f(m_game_state->light_position.x, m_game_state->light_position.y, m_game_state->light_position.z, 1.0f);
+                Rndr::Point4f(m_game_state->light_position.x, m_game_state->light_position.y,
+                              m_game_state->light_position.z, 1.0f);
 
         m_desc.graphics_context->UpdateBuffer(m_per_frame_buffer, Opal::AsBytes(per_frame_data));
         m_desc.graphics_context->BindSwapChainFrameBuffer(m_desc.swap_chain);
@@ -297,25 +322,20 @@ private:
     Opal::Ref<const Rndr::Texture> m_shadow_texture;
 };
 
-class PostProcessRenderer : public Rndr::RendererBase
-{
+class PostProcessRenderer : public Rndr::RendererBase {
 public:
-    PostProcessRenderer(const Rndr::RendererBaseDesc& desc, bool use_full_screen_triangle = false)
-        : RendererBase("Post Process Renderer", desc), m_use_full_screen_triangle(use_full_screen_triangle)
-    {
+    PostProcessRenderer(const Rndr::RendererBaseDesc &desc, bool use_full_screen_triangle = false)
+        : RendererBase("Post Process Renderer", desc), m_use_full_screen_triangle(use_full_screen_triangle) {
         // Setup shaders
         const Opal::StringUtf8 shader_dir = Opal::Paths::Combine(nullptr, ASSETS_ROOT, "shaders").GetValue();
         Opal::StringUtf8 vertex_shader_contents;
-        if (m_use_full_screen_triangle)
-        {
+        if (m_use_full_screen_triangle) {
             vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "full-screen-triangle.vert");
-        }
-        else
-        {
+        } else {
             vertex_shader_contents = Rndr::File::ReadShader(shader_dir, "full-screen-quad.vert");
         }
         const Opal::StringUtf8 pixel_shader_contents =
-            R"(
+                R"(
             #version 450
             layout(location = 0) in vec2 uv;
             layout(location = 0) out vec4 frag_color;
@@ -325,31 +345,31 @@ public:
             }
         )";
         Rndr::ErrorCode err =
-            m_vertex_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents});
+                m_vertex_shader.Initialize(m_desc.graphics_context, {
+                                               .type = Rndr::ShaderType::Vertex, .source = vertex_shader_contents
+                                           });
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
-        err = m_pixel_shader.Initialize(m_desc.graphics_context, {.type = Rndr::ShaderType::Fragment, .source = pixel_shader_contents});
+        err = m_pixel_shader.Initialize(m_desc.graphics_context, {
+                                            .type = Rndr::ShaderType::Fragment, .source = pixel_shader_contents
+                                        });
         RNDR_ASSERT(err == Rndr::ErrorCode::Success);
 
         // Setup pipeline
         m_pipeline = Rndr::Pipeline(m_desc.graphics_context, {
-                                                                 .vertex_shader = &m_vertex_shader,
-                                                                 .pixel_shader = &m_pixel_shader,
-                                                                 .input_layout = Rndr::InputLayoutBuilder().Build(),
-                                                                 .rasterizer = {.fill_mode = Rndr::FillMode::Solid},
-                                                                 .depth_stencil = {.is_depth_enabled = false},
-                                                             });
+                                        .vertex_shader = &m_vertex_shader,
+                                        .pixel_shader = &m_pixel_shader,
+                                        .input_layout = Rndr::InputLayoutBuilder().Build(),
+                                        .rasterizer = {.fill_mode = Rndr::FillMode::Solid},
+                                        .depth_stencil = {.is_depth_enabled = false},
+                                    });
         RNDR_ASSERT(m_pipeline.IsValid());
     }
 
-    bool Render() override
-    {
+    bool Render() override {
         m_desc.graphics_context->BindPipeline(m_pipeline);
-        if (m_use_full_screen_triangle)
-        {
+        if (m_use_full_screen_triangle) {
             m_desc.graphics_context->DrawVertices(Rndr::PrimitiveTopology::Triangle, 3);
-        }
-        else
-        {
+        } else {
             m_desc.graphics_context->DrawVertices(Rndr::PrimitiveTopology::Triangle, 6);
         }
         return true;
@@ -363,20 +383,17 @@ private:
     Rndr::Pipeline m_pipeline;
 };
 
-class UIRenderer : public Rndr::RendererBase
-{
+class UIRenderer : public Rndr::RendererBase {
 public:
-    UIRenderer(const Rndr::RendererBaseDesc& desc, Rndr::Window& window, GameState* game_state,
-               const Rndr::FrameBuffer* shadow_frame_buffer)
-        : RendererBase("UI Renderer", desc), m_game_state(game_state), m_shadow_frame_buffer(shadow_frame_buffer)
-    {
+    UIRenderer(const Rndr::RendererBaseDesc &desc, Rndr::Window &window, GameState *game_state,
+               const Rndr::FrameBuffer *shadow_frame_buffer)
+        : RendererBase("UI Renderer", desc), m_game_state(game_state), m_shadow_frame_buffer(shadow_frame_buffer) {
         ImGuiWrapper::Init(window, *desc.graphics_context);
     }
 
     ~UIRenderer() override { ImGuiWrapper::Destroy(); }
 
-    bool Render() override
-    {
+    bool Render() override {
         RNDR_GPU_EVENT_SCOPED("UIRenderer::Render");
 
         ImGuiWrapper::StartFrame();
@@ -404,12 +421,13 @@ private:
     Opal::Ref<const Rndr::FrameBuffer> m_shadow_frame_buffer;
 };
 
-void Run()
-{
+void Run() {
     Rndr::Window window({.width = 1600, .height = 1200, .name = "Shadows Example"});
     Rndr::GraphicsContext graphics_context({.window_handle = window.GetNativeWindowHandle()});
     RNDR_ASSERT(graphics_context.IsValid());
-    Rndr::SwapChain swap_chain(graphics_context, {.width = window.GetWidth(), .height = window.GetHeight(), .enable_vsync = false});
+    Rndr::SwapChain swap_chain(graphics_context, {
+                                   .width = window.GetWidth(), .height = window.GetHeight(), .enable_vsync = false
+                               });
     RNDR_ASSERT(swap_chain.IsValid());
 
     window.on_resize.Bind([&swap_chain](int32_t width, int32_t height) { swap_chain.SetSize(width, height); });
@@ -418,36 +436,44 @@ void Run()
     exit_bindings.PushBack({Rndr::InputPrimitive::Keyboard_Esc, Rndr::InputTrigger::ButtonReleased});
     Rndr::InputSystem::GetCurrentContext().AddAction(
         Rndr::InputAction("Exit"),
-        Rndr::InputActionData{.callback = [&window](Rndr::InputPrimitive, Rndr::InputTrigger, float) { window.Close(); },
-                              .native_window = window.GetNativeWindowHandle(),
-                              .bindings = Opal::ArrayView<Rndr::InputBinding>(exit_bindings)});
+        Rndr::InputActionData{
+            .callback = [&window](Rndr::InputPrimitive, Rndr::InputTrigger, float) { window.Close(); },
+            .native_window = window.GetNativeWindowHandle(),
+            .bindings = Opal::ArrayView<Rndr::InputBinding>(exit_bindings)
+        });
 
-    const Rndr::RendererBaseDesc renderer_desc = {.graphics_context = Opal::Ref{graphics_context}, .swap_chain = Opal::Ref{swap_chain}};
+    const Rndr::RendererBaseDesc renderer_desc = {
+        .graphics_context = Opal::Ref{graphics_context}, .swap_chain = Opal::Ref{swap_chain}
+    };
 
     MeshContainer mesh_container(&graphics_context);
     GameState game_state;
 
     Rndr::FlyCamera fly_camera(&window, &Rndr::InputSystem::GetCurrentContext(),
-                               {.start_position = Rndr::Point3f(30.0f, 15.0f, 0.0f),
-                                .movement_speed = 100,
-                                .rotation_speed = 200,
-                                .projection_desc = {.near = 0.5f, .far = 5000.0f}});
+                               {
+                                   .start_position = Rndr::Point3f(30.0f, 15.0f, 0.0f),
+                                   .movement_speed = 100,
+                                   .rotation_speed = 200,
+                                   .projection_desc = {.near = 0.5f, .far = 5000.0f}
+                               });
 
     constexpr Rndr::Vector4f k_clear_color = Rndr::Colors::k_black;
     const Opal::ScopePtr<Rndr::RendererBase> clear_renderer =
-        Opal::MakeDefaultScoped<Rndr::ClearRenderer>("Clear the screen", renderer_desc, k_clear_color);
+            Opal::MakeDefaultScoped<Rndr::ClearRenderer>("Clear the screen", renderer_desc, k_clear_color);
     const Opal::ScopePtr<Rndr::RendererBase> shadow_renderer =
-        Opal::MakeDefaultScoped<ShadowRenderer>("Render shadows", renderer_desc, &mesh_container, &game_state);
+            Opal::MakeDefaultScoped<ShadowRenderer>("Render shadows", renderer_desc, &mesh_container, &game_state);
     //    const Opal::ScopePtr<Rndr::RendererBase> post_process_renderer = Opal::MakeDefaultScoped<PostProcessRenderer>(renderer_desc,
     //    true);
-    const ShadowRenderer* shadow_renderer_ptr = static_cast<ShadowRenderer*>(shadow_renderer.Get());
+    const ShadowRenderer *shadow_renderer_ptr = static_cast<ShadowRenderer *>(shadow_renderer.Get());
     const Opal::ScopePtr<Rndr::RendererBase> scene_renderer =
-        Opal::MakeDefaultScoped<SceneRenderer>("Render the scene", renderer_desc, &mesh_container, &game_state,
-                                               &shadow_renderer_ptr->GetFrameBuffer()->GetDepthStencilAttachment(), &fly_camera);
+            Opal::MakeDefaultScoped<SceneRenderer>("Render the scene", renderer_desc, &mesh_container, &game_state,
+                                                   &shadow_renderer_ptr->GetFrameBuffer()->GetDepthStencilAttachment(),
+                                                   &fly_camera);
     const Opal::ScopePtr<Rndr::RendererBase> ui_renderer =
-        Opal::MakeDefaultScoped<UIRenderer>(renderer_desc, window, &game_state, shadow_renderer_ptr->GetFrameBuffer());
+            Opal::MakeDefaultScoped<UIRenderer>(renderer_desc, window, &game_state,
+                                                shadow_renderer_ptr->GetFrameBuffer());
     const Opal::ScopePtr<Rndr::RendererBase> present_renderer =
-        Opal::MakeDefaultScoped<Rndr::PresentRenderer>("Present the back buffer", renderer_desc);
+            Opal::MakeDefaultScoped<Rndr::PresentRenderer>("Present the back buffer", renderer_desc);
 
     Rndr::RendererManager renderer_manager;
     renderer_manager.AddRenderer(clear_renderer.Get());
@@ -458,8 +484,7 @@ void Run()
 
     Rndr::FramesPerSecondCounter fps_counter(0.1f);
     f32 delta_seconds = 0.033f;
-    while (!window.IsClosed())
-    {
+    while (!window.IsClosed()) {
         const f64 start_time = Opal::GetSeconds();
 
         fps_counter.Update(delta_seconds);
