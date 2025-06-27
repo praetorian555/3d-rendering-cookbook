@@ -125,11 +125,10 @@ struct VulkanRenderer
     static u32 FindMemoryType(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties);
 
 private:
+    void CreateQueues();
     void CreateSurface();
-    void PickPhysicalDevice();
     bool IsDeviceSuitable(const VkPhysicalDevice& device);
     QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device);
-    void CreateLogicalDevice();
     bool CheckDeviceExtensionSupport(const VkPhysicalDevice& device);
     SwapChainSupportDetails QuerySwapChainSupport(const VkPhysicalDevice& device);
     VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const Opal::DynamicArray<VkSurfaceFormatKHR>& available_formats);
@@ -161,8 +160,7 @@ private:
     VulkanRendererDesc m_desc;
     VulkanGraphicsContext m_graphics_context;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
-    VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
-    VkDevice m_device = VK_NULL_HANDLE;
+    VulkanDevice m_device;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_present_queue = VK_NULL_HANDLE;
     VkSwapchainKHR m_swap_chain = VK_NULL_HANDLE;
@@ -230,21 +228,15 @@ void Run(Rndr::Application* app)
     app->DestroyGenericWindow(window);
 }
 
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks* allocator)
-{
-    auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
-    if (func != nullptr)
-    {
-        func(instance, debug_messenger, allocator);
-    }
-}
-
 VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc))
 {
     m_graphics_context.Init();
+
+    auto physical_devices = m_graphics_context.EnumeratePhysicalDevices();
+    RNDR_ASSERT(physical_devices.GetSize() > 0, "No physical devices found!");
+    m_device.Init(Opal::Move(physical_devices[0]));
+    CreateQueues();
     CreateSurface();
-    PickPhysicalDevice();
-    CreateLogicalDevice();
     CreateSwapChain();
     CreateImageViews();
     CreateRenderPass();
@@ -263,39 +255,39 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
 
 VulkanRenderer::~VulkanRenderer()
 {
-    vkDeviceWaitIdle(m_device);
+    vkDeviceWaitIdle(m_device.GetNativeDevice());
     for (i32 i = 0; i < k_max_frames_in_flight; ++i)
     {
-        vkDestroySemaphore(m_device, m_render_finished_semaphores[i], nullptr);
-        vkDestroySemaphore(m_device, m_image_available_semaphores[i], nullptr);
-        vkDestroyFence(m_device, m_in_flight_fences[i], nullptr);
+        vkDestroySemaphore(m_device.GetNativeDevice(), m_render_finished_semaphores[i], nullptr);
+        vkDestroySemaphore(m_device.GetNativeDevice(), m_image_available_semaphores[i], nullptr);
+        vkDestroyFence(m_device.GetNativeDevice(), m_in_flight_fences[i], nullptr);
     }
-    vkDestroyBuffer(m_device, m_index_buffer, nullptr);
-    vkFreeMemory(m_device, m_index_buffer_memory, nullptr);
-    vkDestroyBuffer(m_device, m_vertex_buffer, nullptr);
-    vkFreeMemory(m_device, m_vertex_buffer_memory, nullptr);
-    vkDestroyCommandPool(m_device, m_command_pool, nullptr);
+    vkDestroyBuffer(m_device.GetNativeDevice(), m_index_buffer, nullptr);
+    vkFreeMemory(m_device.GetNativeDevice(), m_index_buffer_memory, nullptr);
+    vkDestroyBuffer(m_device.GetNativeDevice(), m_vertex_buffer, nullptr);
+    vkFreeMemory(m_device.GetNativeDevice(), m_vertex_buffer_memory, nullptr);
+    vkDestroyCommandPool(m_device.GetNativeDevice(), m_command_pool, nullptr);
     for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
     {
-        vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
+        vkDestroyFramebuffer(m_device.GetNativeDevice(), frame_buffer, nullptr);
     }
     for (i32 i = 0; i < k_max_frames_in_flight; ++i)
     {
-        vkDestroyBuffer(m_device, m_uniform_buffers[i], nullptr);
-        vkFreeMemory(m_device, m_uniform_buffers_memory[i], nullptr);
+        vkDestroyBuffer(m_device.GetNativeDevice(), m_uniform_buffers[i], nullptr);
+        vkFreeMemory(m_device.GetNativeDevice(), m_uniform_buffers_memory[i], nullptr);
     }
-    vkDestroyDescriptorPool(m_device, m_descriptor_pool, nullptr);
-    vkDestroyDescriptorSetLayout(m_device, m_descriptor_set_layout, nullptr);
-    vkDestroyPipeline(m_device, m_graphics_pipeline, nullptr);
-    vkDestroyPipelineLayout(m_device, m_pipeline_layout, nullptr);
-    vkDestroyRenderPass(m_device, m_render_pass, nullptr);
+    vkDestroyDescriptorPool(m_device.GetNativeDevice(), m_descriptor_pool, nullptr);
+    vkDestroyDescriptorSetLayout(m_device.GetNativeDevice(), m_descriptor_set_layout, nullptr);
+    vkDestroyPipeline(m_device.GetNativeDevice(), m_graphics_pipeline, nullptr);
+    vkDestroyPipelineLayout(m_device.GetNativeDevice(), m_pipeline_layout, nullptr);
+    vkDestroyRenderPass(m_device.GetNativeDevice(), m_render_pass, nullptr);
     for (const VkImageView& image_view : m_swap_chain_image_views)
     {
-        vkDestroyImageView(m_device, image_view, nullptr);
+        vkDestroyImageView(m_device.GetNativeDevice(), image_view, nullptr);
     }
-    vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
-    vkDestroyDevice(m_device, nullptr);
+    vkDestroySwapchainKHR(m_device.GetNativeDevice(), m_swap_chain, nullptr);
     vkDestroySurfaceKHR(m_graphics_context.GetInstance(), m_surface, nullptr);
+    m_device.Destroy();
     m_graphics_context.Destroy();
 }
 
@@ -311,25 +303,6 @@ void VulkanRenderer::CreateSurface()
 #else
 #error Surface creation is not supported on this platform!
 #endif
-}
-
-void VulkanRenderer::PickPhysicalDevice()
-{
-    u32 device_count = 0;
-    vkEnumeratePhysicalDevices(m_graphics_context.GetInstance(), &device_count, nullptr);
-    RNDR_ASSERT(device_count > 0, "No physical devices found!");
-
-    Opal::DynamicArray<VkPhysicalDevice> devices(device_count);
-    vkEnumeratePhysicalDevices(m_graphics_context.GetInstance(), &device_count, devices.GetData());
-    for (const VkPhysicalDevice& device : devices)
-    {
-        if (IsDeviceSuitable(device))
-        {
-            m_physical_device = device;
-            break;
-        }
-    }
-    RNDR_ASSERT(m_physical_device != VK_NULL_HANDLE, "No phyisical device is suitable!");
 }
 
 bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
@@ -389,56 +362,6 @@ VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhy
     }
 
     return queue_family_indices;
-}
-
-void VulkanRenderer::CreateLogicalDevice()
-{
-    QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_physical_device);
-
-    const f32 queue_priority = 1.0f;
-    Opal::DynamicArray<VkDeviceQueueCreateInfo> queue_create_infos;
-    {
-        VkDeviceQueueCreateInfo queue_create_info{};
-        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
-        queue_create_info.queueCount = 1;
-        queue_create_info.pQueuePriorities = &queue_priority;
-        queue_create_infos.PushBack(queue_create_info);
-    }
-    {
-        VkDeviceQueueCreateInfo queue_create_info{};
-        queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queue_create_info.queueFamilyIndex = queue_family_indices.present_family.value();
-        queue_create_info.queueCount = 1;
-        queue_create_info.pQueuePriorities = &queue_priority;
-        queue_create_infos.PushBack(queue_create_info);
-    }
-
-    const VkPhysicalDeviceFeatures device_features{};
-
-    VkDeviceCreateInfo device_create_info{};
-    device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_create_info.pQueueCreateInfos = queue_create_infos.GetData();
-    device_create_info.queueCreateInfoCount = static_cast<u32>(queue_create_infos.GetSize());
-    device_create_info.pEnabledFeatures = &device_features;
-
-    device_create_info.enabledExtensionCount = static_cast<u32>(m_device_extensions.GetSize());
-    device_create_info.ppEnabledExtensionNames = m_device_extensions.GetData();
-
-    if (m_desc.enable_validation_layers)
-    {
-        device_create_info.enabledLayerCount = static_cast<u32>(m_validation_layers.GetSize());
-        device_create_info.ppEnabledLayerNames = m_validation_layers.GetData();
-    }
-    else
-    {
-        device_create_info.enabledLayerCount = 0;
-    }
-
-    VK_CHECK(vkCreateDevice(m_physical_device, &device_create_info, nullptr, &m_device));
-
-    vkGetDeviceQueue(m_device, queue_family_indices.graphics_family.value(), 0, &m_graphics_queue);
-    vkGetDeviceQueue(m_device, queue_family_indices.present_family.value(), 0, &m_present_queue);
 }
 
 bool VulkanRenderer::CheckDeviceExtensionSupport(const VkPhysicalDevice& device)
@@ -539,7 +462,7 @@ VkExtent2D VulkanRenderer::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
 
 void VulkanRenderer::CreateSwapChain()
 {
-    const SwapChainSupportDetails swap_chain_support = QuerySwapChainSupport(m_physical_device);
+    const SwapChainSupportDetails swap_chain_support = QuerySwapChainSupport(m_device.GetNativePhysicalDevice());
     const VkSurfaceFormatKHR surface_format = ChooseSwapSurfaceFormat(swap_chain_support.formats);
     const VkPresentModeKHR present_mode = ChooseSwapPresentMode(swap_chain_support.present_modes);
     const VkExtent2D extent = ChooseSwapExtent(swap_chain_support.capabilities);
@@ -560,7 +483,7 @@ void VulkanRenderer::CreateSwapChain()
     create_info.imageArrayLayers = 1;
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    QueueFamilyIndices all_queue_family_indices = FindQueueFamilies(m_physical_device);
+    QueueFamilyIndices all_queue_family_indices = FindQueueFamilies(m_device.GetNativePhysicalDevice());
     const u32 queue_family_indices[] = {all_queue_family_indices.graphics_family.value(), all_queue_family_indices.present_family.value()};
     if (all_queue_family_indices.graphics_family != all_queue_family_indices.present_family)
     {
@@ -582,11 +505,11 @@ void VulkanRenderer::CreateSwapChain()
     create_info.clipped = VK_TRUE;
     create_info.oldSwapchain = VK_NULL_HANDLE;
 
-    VK_CHECK(vkCreateSwapchainKHR(m_device, &create_info, nullptr, &m_swap_chain));
+    VK_CHECK(vkCreateSwapchainKHR(m_device.GetNativeDevice(), &create_info, nullptr, &m_swap_chain));
 
-    VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, nullptr));
+    VK_CHECK(vkGetSwapchainImagesKHR(m_device.GetNativeDevice(), m_swap_chain, &image_count, nullptr));
     m_swap_chain_images.Resize(image_count);
-    VK_CHECK(vkGetSwapchainImagesKHR(m_device, m_swap_chain, &image_count, m_swap_chain_images.GetData()));
+    VK_CHECK(vkGetSwapchainImagesKHR(m_device.GetNativeDevice(), m_swap_chain, &image_count, m_swap_chain_images.GetData()));
 
     m_swap_chain_image_format = surface_format.format;
     m_swap_chain_extent = extent;
@@ -612,7 +535,7 @@ void VulkanRenderer::CreateImageViews()
         create_info.subresourceRange.baseArrayLayer = 0;
         create_info.subresourceRange.layerCount = 1;
 
-        VK_CHECK(vkCreateImageView(m_device, &create_info, nullptr, &m_swap_chain_image_views[i]));
+        VK_CHECK(vkCreateImageView(m_device.GetNativeDevice(), &create_info, nullptr, &m_swap_chain_image_views[i]));
     }
 }
 
@@ -654,7 +577,7 @@ void VulkanRenderer::CreateRenderPass()
     render_pass_info.dependencyCount = 1;
     render_pass_info.pDependencies = &dependency;
 
-    VK_CHECK(vkCreateRenderPass(m_device, &render_pass_info, nullptr, &m_render_pass));
+    VK_CHECK(vkCreateRenderPass(m_device.GetNativeDevice(), &render_pass_info, nullptr, &m_render_pass));
 }
 
 void VulkanRenderer::CreateGraphicsPipeline()
@@ -769,7 +692,7 @@ void VulkanRenderer::CreateGraphicsPipeline()
     pipeline_layout_info.pushConstantRangeCount = 0;
     pipeline_layout_info.pPushConstantRanges = nullptr;
 
-    VK_CHECK(vkCreatePipelineLayout(m_device, &pipeline_layout_info, nullptr, &m_pipeline_layout));
+    VK_CHECK(vkCreatePipelineLayout(m_device.GetNativeDevice(), &pipeline_layout_info, nullptr, &m_pipeline_layout));
 
     VkGraphicsPipelineCreateInfo pipeline_info{};
     pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -789,10 +712,10 @@ void VulkanRenderer::CreateGraphicsPipeline()
     pipeline_info.basePipelineHandle = VK_NULL_HANDLE;
     pipeline_info.basePipelineIndex = -1;
 
-    VK_CHECK(vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline));
+    VK_CHECK(vkCreateGraphicsPipelines(m_device.GetNativeDevice(), VK_NULL_HANDLE, 1, &pipeline_info, nullptr, &m_graphics_pipeline));
 
-    vkDestroyShaderModule(m_device, vertex_shader_module, nullptr);
-    vkDestroyShaderModule(m_device, fragment_shader_module, nullptr);
+    vkDestroyShaderModule(m_device.GetNativeDevice(), vertex_shader_module, nullptr);
+    vkDestroyShaderModule(m_device.GetNativeDevice(), fragment_shader_module, nullptr);
 }
 
 VkShaderModule VulkanRenderer::CreateShaderModule(const Opal::DynamicArray<u8>& code)
@@ -802,7 +725,7 @@ VkShaderModule VulkanRenderer::CreateShaderModule(const Opal::DynamicArray<u8>& 
     create_info.codeSize = code.GetSize();
     create_info.pCode = reinterpret_cast<const u32*>(code.GetData());
     VkShaderModule shader_module = VK_NULL_HANDLE;
-    VK_CHECK(vkCreateShaderModule(m_device, &create_info, nullptr, &shader_module));
+    VK_CHECK(vkCreateShaderModule(m_device.GetNativeDevice(), &create_info, nullptr, &shader_module));
     return shader_module;
 }
 
@@ -822,20 +745,20 @@ void VulkanRenderer::CreateFrameBuffers()
         frame_buffer_info.height = m_swap_chain_extent.height;
         frame_buffer_info.layers = 1;
 
-        VK_CHECK(vkCreateFramebuffer(m_device, &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]));
+        VK_CHECK(vkCreateFramebuffer(m_device.GetNativeDevice(), &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]));
     }
 }
 
 void VulkanRenderer::CreateCommandPool()
 {
-    QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_physical_device);
+    QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_device.GetNativePhysicalDevice());
 
     VkCommandPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    VK_CHECK(vkCreateCommandPool(m_device, &pool_info, nullptr, &m_command_pool));
+    VK_CHECK(vkCreateCommandPool(m_device.GetNativeDevice(), &pool_info, nullptr, &m_command_pool));
 }
 
 void VulkanRenderer::CreateCommandBuffers()
@@ -848,7 +771,7 @@ void VulkanRenderer::CreateCommandBuffers()
     alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     alloc_info.commandBufferCount = static_cast<u32>(m_command_buffers.GetSize());
 
-    VK_CHECK(vkAllocateCommandBuffers(m_device, &alloc_info, m_command_buffers.GetData()));
+    VK_CHECK(vkAllocateCommandBuffers(m_device.GetNativeDevice(), &alloc_info, m_command_buffers.GetData()));
 }
 
 void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
@@ -894,11 +817,11 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
 void VulkanRenderer::Draw()
 {
     // Wait for the previous frame to finish
-    vkWaitForFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight], VK_TRUE, UINT64_MAX);
+    vkWaitForFences(m_device.GetNativeDevice(), 1, &m_in_flight_fences[m_current_frame_in_flight], VK_TRUE, UINT64_MAX);
 
     // Acquire an image from the swap chain
     u32 image_index = 0;
-    VkResult result = vkAcquireNextImageKHR(m_device, m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame_in_flight],
+    VkResult result = vkAcquireNextImageKHR(m_device.GetNativeDevice(), m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame_in_flight],
                                             VK_NULL_HANDLE, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -907,7 +830,7 @@ void VulkanRenderer::Draw()
     }
     RNDR_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "Failed to acquire next image from the swap chain!");
 
-    vkResetFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight]);
+    vkResetFences(m_device.GetNativeDevice(), 1, &m_in_flight_fences[m_current_frame_in_flight]);
 
     // Record the command buffer
     vkResetCommandBuffer(m_command_buffers[m_current_frame_in_flight], 0);
@@ -969,14 +892,14 @@ void VulkanRenderer::CreateSyncObjects()
 
     for (i32 i = 0; i < k_max_frames_in_flight; ++i)
     {
-        VK_CHECK(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_image_available_semaphores[i]));
-        VK_CHECK(vkCreateSemaphore(m_device, &semaphore_info, nullptr, &m_render_finished_semaphores[i]));
-        VK_CHECK(vkCreateFence(m_device, &fence_info, nullptr, &m_in_flight_fences[i]));
+        VK_CHECK(vkCreateSemaphore(m_device.GetNativeDevice(), &semaphore_info, nullptr, &m_image_available_semaphores[i]));
+        VK_CHECK(vkCreateSemaphore(m_device.GetNativeDevice(), &semaphore_info, nullptr, &m_render_finished_semaphores[i]));
+        VK_CHECK(vkCreateFence(m_device.GetNativeDevice(), &fence_info, nullptr, &m_in_flight_fences[i]));
     }
 }
 void VulkanRenderer::RecreateSwapChain()
 {
-    vkDeviceWaitIdle(m_device);
+    vkDeviceWaitIdle(m_device.GetNativeDevice());
 
     CleanUpSwapChain();
 
@@ -995,13 +918,13 @@ void VulkanRenderer::CleanUpSwapChain()
 {
     for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
     {
-        vkDestroyFramebuffer(m_device, frame_buffer, nullptr);
+        vkDestroyFramebuffer(m_device.GetNativeDevice(), frame_buffer, nullptr);
     }
     for (const VkImageView& image_view : m_swap_chain_image_views)
     {
-        vkDestroyImageView(m_device, image_view, nullptr);
+        vkDestroyImageView(m_device.GetNativeDevice(), image_view, nullptr);
     }
-    vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
+    vkDestroySwapchainKHR(m_device.GetNativeDevice(), m_swap_chain, nullptr);
     m_swap_chain = VK_NULL_HANDLE;
 }
 
@@ -1020,17 +943,17 @@ void VulkanRenderer::CreateVertexBuffer()
                  staging_buffer, staging_buffer_memory);
 
     void* data = nullptr;
-    VK_CHECK(vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data));
+    VK_CHECK(vkMapMemory(m_device.GetNativeDevice(), staging_buffer_memory, 0, buffer_size, 0, &data));
     memcpy(data, g_vertices.GetData(), buffer_size);
-    vkUnmapMemory(m_device, staging_buffer_memory);
+    vkUnmapMemory(m_device.GetNativeDevice(), staging_buffer_memory);
 
     CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                  m_vertex_buffer, m_vertex_buffer_memory);
 
     CopyBuffer(staging_buffer, m_vertex_buffer, buffer_size);
 
-    vkDestroyBuffer(m_device, staging_buffer, nullptr);
-    vkFreeMemory(m_device, staging_buffer_memory, nullptr);
+    vkDestroyBuffer(m_device.GetNativeDevice(), staging_buffer, nullptr);
+    vkFreeMemory(m_device.GetNativeDevice(), staging_buffer_memory, nullptr);
 }
 
 u32 VulkanRenderer::FindMemoryType(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties)
@@ -1049,6 +972,14 @@ u32 VulkanRenderer::FindMemoryType(VkPhysicalDevice physical_device, u32 type_fi
     return 0;
 }
 
+void VulkanRenderer::CreateQueues()
+{
+    auto index = m_device.GetPhysicalDevice().GetQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT);
+    RNDR_ASSERT(index.HasValue(), "No graphics queue!");
+    vkGetDeviceQueue(m_device.GetNativeDevice(), index.GetValue(), 0, &m_graphics_queue);
+    vkGetDeviceQueue(m_device.GetNativeDevice(), index.GetValue(), 0, &m_present_queue);
+}
+
 void VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& out_buffer,
                                   VkDeviceMemory& out_buffer_memory)
 {
@@ -1056,17 +987,17 @@ void VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, V
     buffer_info.size = size;
     buffer_info.usage = usage;
     buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    VK_CHECK(vkCreateBuffer(m_device, &buffer_info, nullptr, &out_buffer));
+    VK_CHECK(vkCreateBuffer(m_device.GetNativeDevice(), &buffer_info, nullptr, &out_buffer));
 
     VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(m_device, out_buffer, &memory_requirements);
+    vkGetBufferMemoryRequirements(m_device.GetNativeDevice(), out_buffer, &memory_requirements);
 
     VkMemoryAllocateInfo alloc_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
     alloc_info.allocationSize = memory_requirements.size;
-    alloc_info.memoryTypeIndex = FindMemoryType(m_physical_device, memory_requirements.memoryTypeBits, properties);
+    alloc_info.memoryTypeIndex = FindMemoryType(m_device.GetNativePhysicalDevice(), memory_requirements.memoryTypeBits, properties);
 
-    VK_CHECK(vkAllocateMemory(m_device, &alloc_info, nullptr, &out_buffer_memory));
-    VK_CHECK(vkBindBufferMemory(m_device, out_buffer, out_buffer_memory, 0));
+    VK_CHECK(vkAllocateMemory(m_device.GetNativeDevice(), &alloc_info, nullptr, &out_buffer_memory));
+    VK_CHECK(vkBindBufferMemory(m_device.GetNativeDevice(), out_buffer, out_buffer_memory, 0));
 }
 
 void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkDeviceSize size)
@@ -1078,7 +1009,7 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
     alloc_info.commandBufferCount = 1;
 
     VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-    VK_CHECK(vkAllocateCommandBuffers(m_device, &alloc_info, &command_buffer));
+    VK_CHECK(vkAllocateCommandBuffers(m_device.GetNativeDevice(), &alloc_info, &command_buffer));
 
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -1100,7 +1031,7 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
     vkQueueSubmit(m_graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
     vkQueueWaitIdle(m_graphics_queue);
 
-    vkFreeCommandBuffers(m_device, m_command_pool, 1, &command_buffer);
+    vkFreeCommandBuffers(m_device.GetNativeDevice(), m_command_pool, 1, &command_buffer);
 }
 
 void VulkanRenderer::CreateIndexBuffer()
@@ -1113,17 +1044,17 @@ void VulkanRenderer::CreateIndexBuffer()
                  staging_buffer, staging_buffer_memory);
 
     void* data = nullptr;
-    VK_CHECK(vkMapMemory(m_device, staging_buffer_memory, 0, buffer_size, 0, &data));
+    VK_CHECK(vkMapMemory(m_device.GetNativeDevice(), staging_buffer_memory, 0, buffer_size, 0, &data));
     memcpy(data, g_indices.GetData(), buffer_size);
-    vkUnmapMemory(m_device, staging_buffer_memory);
+    vkUnmapMemory(m_device.GetNativeDevice(), staging_buffer_memory);
 
     CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                  m_index_buffer, m_index_buffer_memory);
 
     CopyBuffer(staging_buffer, m_index_buffer, buffer_size);
 
-    vkDestroyBuffer(m_device, staging_buffer, nullptr);
-    vkFreeMemory(m_device, staging_buffer_memory, nullptr);
+    vkDestroyBuffer(m_device.GetNativeDevice(), staging_buffer, nullptr);
+    vkFreeMemory(m_device.GetNativeDevice(), staging_buffer_memory, nullptr);
 }
 
 void VulkanRenderer::CreateDescriptorSetLayout()
@@ -1139,7 +1070,7 @@ void VulkanRenderer::CreateDescriptorSetLayout()
     layout_info.bindingCount = 1;
     layout_info.pBindings = &ubo_layout_binding;
 
-    VK_CHECK(vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &m_descriptor_set_layout));
+    VK_CHECK(vkCreateDescriptorSetLayout(m_device.GetNativeDevice(), &layout_info, nullptr, &m_descriptor_set_layout));
 }
 
 void VulkanRenderer::CreateUniformBuffers()
@@ -1155,7 +1086,7 @@ void VulkanRenderer::CreateUniformBuffers()
         CreateBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, m_uniform_buffers[i],
                      m_uniform_buffers_memory[i]);
-        VK_CHECK(vkMapMemory(m_device, m_uniform_buffers_memory[i], 0, buffer_size, 0, &m_mapped_uniform_buffers[i]));
+        VK_CHECK(vkMapMemory(m_device.GetNativeDevice(), m_uniform_buffers_memory[i], 0, buffer_size, 0, &m_mapped_uniform_buffers[i]));
     }
 }
 
@@ -1190,7 +1121,7 @@ void VulkanRenderer::CreateDescriptorPool()
     pool_info.pPoolSizes = &pool_size;
     pool_info.maxSets = k_max_frames_in_flight;
 
-    VK_CHECK(vkCreateDescriptorPool(m_device, &pool_info, nullptr, &m_descriptor_pool));
+    VK_CHECK(vkCreateDescriptorPool(m_device.GetNativeDevice(), &pool_info, nullptr, &m_descriptor_pool));
 }
 
 void VulkanRenderer::CreateDescriptorSets()
@@ -1203,7 +1134,7 @@ void VulkanRenderer::CreateDescriptorSets()
     alloc_info.pSetLayouts = layouts.GetData();
 
     m_descriptor_sets.Resize(k_max_frames_in_flight);
-    VK_CHECK(vkAllocateDescriptorSets(m_device, &alloc_info, m_descriptor_sets.GetData()));
+    VK_CHECK(vkAllocateDescriptorSets(m_device.GetNativeDevice(), &alloc_info, m_descriptor_sets.GetData()));
 
     for (i32 i = 0; i < k_max_frames_in_flight; i++)
     {
@@ -1221,6 +1152,6 @@ void VulkanRenderer::CreateDescriptorSets()
         descriptor_write.descriptorCount = 1;
         descriptor_write.pBufferInfo = &buffer_info;
 
-        vkUpdateDescriptorSets(m_device, 1, &descriptor_write, 0, nullptr);
+        vkUpdateDescriptorSets(m_device.GetNativeDevice(), 1, &descriptor_write, 0, nullptr);
     }
 }
