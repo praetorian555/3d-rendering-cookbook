@@ -32,6 +32,8 @@ VulkanPhysicalDevice::VulkanPhysicalDevice(VulkanPhysicalDevice&& other) noexcep
 
 VulkanPhysicalDevice& VulkanPhysicalDevice::operator=(VulkanPhysicalDevice&& other) noexcept
 {
+    Destroy();
+
     m_physical_device = other.m_physical_device;
     m_properties = other.m_properties;
     m_features = other.m_features;
@@ -137,6 +139,8 @@ VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
 
 VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
 {
+    Destroy();
+
     m_device = other.m_device;
     m_physical_device = Opal::Move(other.m_physical_device);
     m_desc = Opal::Move(other.m_desc);
