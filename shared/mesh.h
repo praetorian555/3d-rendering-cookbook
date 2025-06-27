@@ -46,7 +46,7 @@ public:
 
     [[nodiscard]] RNDR_FORCE_INLINE i64 GetLodIndicesCount(i64 lod) const
     {
-        RNDR_ASSERT(lod < lod_count);
+        RNDR_ASSERT(lod < lod_count, "LOD index out of range");
         return lod_offsets[lod + 1] - lod_offsets[lod];
     }
 };

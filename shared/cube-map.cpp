@@ -38,7 +38,7 @@ Vector3f FaceCoordinatesToXYZ(i32 x_result, i32 y_result, CubeMapFace face_id, i
         case CubeMapFace::NegativeZ:
             return {1.0f, x - 1.0f, 1.0f - y};
         default:
-            RNDR_ASSERT(false);
+            RNDR_ASSERT(false, "Bad face id!");
             break;
     }
     return {};

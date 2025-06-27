@@ -177,8 +177,8 @@ bool Mesh::Merge(MeshData& out_mesh_data, const Opal::ArrayView<MeshData>& mesh_
     return true;
 }
 
-bool Mesh::GetDrawCommands(Opal::DynamicArray<Rndr::DrawIndicesData>& out_draw_commands, const Opal::DynamicArray<MeshDrawData>& mesh_draw_data,
-                           const MeshData& mesh_data)
+bool Mesh::GetDrawCommands(Opal::DynamicArray<Rndr::DrawIndicesData>& out_draw_commands,
+                           const Opal::DynamicArray<MeshDrawData>& mesh_draw_data, const MeshData& mesh_data)
 {
     out_draw_commands.Resize(mesh_draw_data.GetSize());
     for (int i = 0; i < out_draw_commands.GetSize(); i++)
@@ -187,12 +187,14 @@ bool Mesh::GetDrawCommands(Opal::DynamicArray<Rndr::DrawIndicesData>& out_draw_c
         const int64_t lod = mesh_draw_data[i].lod;
         const MeshDescription& mesh_desc = mesh_data.meshes[mesh_idx];
         const int64_t index_count = mesh_desc.GetLodIndicesCount(lod);
-        RNDR_ASSERT(index_count >= 0 && index_count <= static_cast<int64_t>(UINT32_MAX));
-        RNDR_ASSERT(mesh_draw_data[i].index_buffer_offset >= 0 &&
-                    mesh_draw_data[i].index_buffer_offset <= static_cast<int64_t>(UINT32_MAX));
-        RNDR_ASSERT(mesh_draw_data[i].vertex_buffer_offset >= 0 &&
-                    mesh_draw_data[i].vertex_buffer_offset <= static_cast<int64_t>(UINT32_MAX));
-        RNDR_ASSERT(mesh_draw_data[i].material_index >= 0 && mesh_draw_data[i].material_index <= static_cast<int64_t>(UINT32_MAX));
+        RNDR_ASSERT(index_count >= 0 && index_count <= static_cast<int64_t>(UINT32_MAX), "Index count is out of bounds");
+        RNDR_ASSERT(mesh_draw_data[i].index_buffer_offset >= 0 && mesh_draw_data[i].index_buffer_offset <= static_cast<int64_t>(UINT32_MAX),
+                    "Index buffer offset is out of bounds");
+        RNDR_ASSERT(
+            mesh_draw_data[i].vertex_buffer_offset >= 0 && mesh_draw_data[i].vertex_buffer_offset <= static_cast<int64_t>(UINT32_MAX),
+            "Vertex buffer offset is out of bounds");
+        RNDR_ASSERT(mesh_draw_data[i].material_index >= 0 && mesh_draw_data[i].material_index <= static_cast<int64_t>(UINT32_MAX),
+                    "Material index is out of bounds");
         out_draw_commands[i] = {.index_count = static_cast<uint32_t>(index_count),
                                 .instance_count = 1,
                                 .first_index = static_cast<uint32_t>(mesh_draw_data[i].index_buffer_offset),
@@ -250,8 +252,7 @@ Rndr::ErrorCode Mesh::AddPlaneXZ(MeshData& out_mesh_data, const Point3f& center,
     for (i32 i = 0; i < 4; i++)
     {
         const u8* vertex_data = reinterpret_cast<const u8*>(vertices[i].data);
-        out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.cend(), vertex_data,
-                                                vertex_data + sizeof(Rndr::Point3f));
+        out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.cend(), vertex_data, vertex_data + sizeof(Rndr::Point3f));
 
         if (!!(attributes_to_load & MeshAttributesToLoad::LoadNormals))
         {

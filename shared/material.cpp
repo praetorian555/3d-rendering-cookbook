@@ -66,14 +66,14 @@ bool Material::WriteData(const Opal::DynamicArray<MaterialDescription>& material
     f.Write(&texture_paths_count, sizeof(texture_paths_count), 1);
     for (const Opal::StringUtf8& texture_path : texture_paths)
     {
-        RNDR_ASSERT(!texture_path.IsEmpty());
+        RNDR_ASSERT(!texture_path.IsEmpty(), "Texture path is empty");
         size_t texture_path_length = texture_path.GetSize();
         f.Write(&texture_path_length, sizeof(texture_path_length), 1);
         f.Write(texture_path.GetData(), sizeof(texture_path[0]), texture_path_length);
     }
 
     const size_t materials_count = materials.GetSize();
-    RNDR_ASSERT(materials_count > 0);
+    RNDR_ASSERT(materials_count > 0, "No materials");
     f.Write(&materials_count, sizeof(materials_count), 1);
     f.Write(materials.GetData(), sizeof(materials[0]), materials_count);
 
@@ -106,7 +106,7 @@ bool Material::ReadDataLoadTextures(Opal::DynamicArray<MaterialDescription>& out
     }
 
     auto base_path_result = Opal::Paths::GetParentPath(file_path);
-    RNDR_ASSERT(base_path_result.HasValue());
+    RNDR_ASSERT(base_path_result.HasValue(), "Failed to get parent path");
     Opal::StringUtf8 base_path = Opal::Move(base_path_result.GetValue());
     Opal::DynamicArray<Opal::StringUtf8> texture_paths(texture_paths_count);
     for (uint32_t i = 0; i < texture_paths_count; ++i)
@@ -117,7 +117,7 @@ bool Material::ReadDataLoadTextures(Opal::DynamicArray<MaterialDescription>& out
             RNDR_LOG_ERROR("Failed to read texture path length!");
             return false;
         }
-        RNDR_ASSERT(texture_path_length > 0);
+        RNDR_ASSERT(texture_path_length > 0, "Texture path is empty");
 
         texture_paths[i].Resize(texture_path_length);
         if (!f.Read(texture_paths[i].GetData(), sizeof(texture_paths[i][0]), texture_path_length))
@@ -127,7 +127,7 @@ bool Material::ReadDataLoadTextures(Opal::DynamicArray<MaterialDescription>& out
         }
 
         auto combine_result = Opal::Paths::Combine(nullptr, base_path, texture_paths[i]);
-        RNDR_ASSERT(combine_result.HasValue());
+        RNDR_ASSERT(combine_result.HasValue(), "Failed to combine paths");
         texture_paths[i] = Opal::Move(combine_result.GetValue());
     }
 
@@ -137,7 +137,7 @@ bool Material::ReadDataLoadTextures(Opal::DynamicArray<MaterialDescription>& out
         RNDR_LOG_ERROR("Failed to read materials count!");
         return false;
     }
-    RNDR_ASSERT(materials_count > 0);
+    RNDR_ASSERT(materials_count > 0, "No materials read");
 
     out_materials.Resize(materials_count);
     if (!f.Read(out_materials.GetData(), sizeof(out_materials[0]), materials_count))
@@ -260,21 +260,21 @@ Opal::StringUtf8 ConvertTexture(
     constexpr int32_t k_max_new_height = 512;
 
     auto src_file_result = Opal::Paths::Combine(nullptr, base_path, texture_path);
-    RNDR_ASSERT(src_file_result.HasValue());
+    RNDR_ASSERT(src_file_result.HasValue(), "Failed to combine paths");
     const Opal::StringUtf8 src_file = Opal::Move(src_file_result.GetValue());
 
     auto relative_src_path_result = Opal::Paths::GetParentPath(texture_path);
-    RNDR_ASSERT(relative_src_path_result.HasValue());
+    RNDR_ASSERT(relative_src_path_result.HasValue(), "Failed to get parent path");
     const Opal::StringUtf8 relative_src_parent_path = Opal::Move(relative_src_path_result.GetValue());
     relative_src_path_result = Opal::Paths::GetStem(texture_path);
-    RNDR_ASSERT(relative_src_path_result.HasValue());
+    RNDR_ASSERT(relative_src_path_result.HasValue(), "Failed to get stem");
     const Opal::StringUtf8 relative_src_stem = Opal::Move(relative_src_path_result.GetValue());
 
     auto src_path_result = Opal::Paths::GetParentPath(src_file);
-    RNDR_ASSERT(src_path_result.HasValue());
+    RNDR_ASSERT(src_path_result.HasValue(), "Failed to get parent path");
     const Opal::StringUtf8 src_parent_path = Opal::Move(src_path_result.GetValue());
     src_path_result = Opal::Paths::GetStem(src_file);
-    RNDR_ASSERT(src_path_result.HasValue());
+    RNDR_ASSERT(src_path_result.HasValue(), "Failed to get stem");
     const Opal::StringUtf8 src_stem = Opal::Move(src_path_result.GetValue());
 
     const Opal::StringUtf8 relative_dst_file = Opal::Paths::Combine(nullptr, relative_src_stem + "_rescaled.png").GetValue();

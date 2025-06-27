@@ -224,7 +224,7 @@ Scene::NodeId Scene::AddNode(SceneDescription& scene, int32_t parent, int32_t le
 
 void Scene::SetNodeName(SceneDescription& scene, Scene::NodeId node, const Opal::StringUtf8& name)
 {
-    RNDR_ASSERT(IsValidNodeId(scene, node));
+    RNDR_ASSERT(IsValidNodeId(scene, node), "Node id is not valid");
     scene.node_id_to_name[node] = static_cast<uint32_t>(scene.node_names.GetSize());
     scene.node_names.PushBack(name);
 }
@@ -236,13 +236,13 @@ bool Scene::IsValidNodeId(const SceneDescription& scene, Scene::NodeId node)
 
 void Scene::SetNodeMeshId(SceneDescription& scene, Scene::NodeId node, uint32_t mesh_id)
 {
-    RNDR_ASSERT(IsValidNodeId(scene, node));
+    RNDR_ASSERT(IsValidNodeId(scene, node), "Node id is not valid");
     scene.node_id_to_mesh_id[node] = mesh_id;
 }
 
 void Scene::SetNodeMaterialId(SceneDescription& scene, Scene::NodeId node, uint32_t material_id)
 {
-    RNDR_ASSERT(IsValidNodeId(scene, node));
+    RNDR_ASSERT(IsValidNodeId(scene, node), "Node id is not valid");
     scene.node_id_to_material_id[node] = material_id;
 }
 
@@ -255,7 +255,7 @@ void Scene::MarkAsChanged(SceneDescription& scene, Scene::NodeId node)
     {
         const NodeId node_to_mark = stack.top();
         stack.pop();
-        RNDR_ASSERT(IsValidNodeId(scene, node_to_mark));
+        RNDR_ASSERT(IsValidNodeId(scene, node_to_mark), "Node id is not valid");
 
         const int32_t level = scene.hierarchy[node_to_mark].level;
         scene.dirty_nodes[level].PushBack(node_to_mark);

@@ -60,7 +60,7 @@ bool AssimpHelpers::ReadMeshData(MeshData& out_mesh_data, const aiScene& ai_scen
 
             if (should_load_normals)
             {
-                RNDR_ASSERT(ai_mesh->HasNormals());
+                RNDR_ASSERT(ai_mesh->HasNormals(), "Normals data is not present in this mesh");
                 Rndr::Normal3f normal(ai_mesh->mNormals[i].x, ai_mesh->mNormals[i].y, ai_mesh->mNormals[i].z);
                 out_mesh_data.vertex_buffer_data.Insert(out_mesh_data.vertex_buffer_data.cend(),
                                                         reinterpret_cast<uint8_t*>(normal.data),
@@ -420,7 +420,7 @@ Rndr::ErrorCode AssimpHelpers::ReadAnimationDataFromAssimp(SkeletalMeshData& out
                                                         reinterpret_cast<u8*>(position.data),
                                                         reinterpret_cast<u8*>(position.data) + sizeof(position));
 
-            RNDR_ASSERT(ai_mesh->HasNormals());
+            RNDR_ASSERT(ai_mesh->HasNormals(), "Normals data is not present in this mesh");
             Rndr::Normal3f normal(ai_mesh->mNormals[i].x, ai_mesh->mNormals[i].y, ai_mesh->mNormals[i].z);
             out_skeletal_mesh.vertex_buffer_data.Insert(out_skeletal_mesh.vertex_buffer_data.cend(),
                                                         reinterpret_cast<uint8_t*>(normal.data),
