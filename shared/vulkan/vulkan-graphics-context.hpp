@@ -20,6 +20,10 @@ public:
     VulkanGraphicsContext() = default;
     explicit VulkanGraphicsContext(const VulkanGraphicsContextDesc& desc);
     ~VulkanGraphicsContext();
+    VulkanGraphicsContext(const VulkanGraphicsContext&) = delete;
+    VulkanGraphicsContext& operator=(const VulkanGraphicsContext&) = delete;
+    VulkanGraphicsContext(VulkanGraphicsContext&&) noexcept;
+    VulkanGraphicsContext& operator=(VulkanGraphicsContext&&) noexcept;
 
     bool Init(const VulkanGraphicsContextDesc& desc = {});
     bool Destroy();
@@ -37,5 +41,4 @@ private:
     VulkanGraphicsContextDesc m_desc;
     VkInstance m_instance = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT m_debug_messenger = VK_NULL_HANDLE;
-    Opal::DynamicArray<VulkanPhysicalDevice> m_physical_devices;
 };

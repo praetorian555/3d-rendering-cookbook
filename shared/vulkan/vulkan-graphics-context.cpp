@@ -53,6 +53,29 @@ VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBits
 }
 }  // namespace
 
+VulkanGraphicsContext::VulkanGraphicsContext(VulkanGraphicsContext&& other) noexcept
+    : m_instance(other.m_instance), m_debug_messenger(other.m_debug_messenger), m_desc(Opal::Move(other.m_desc))
+{
+    other.m_instance = VK_NULL_HANDLE;
+    other.m_debug_messenger = VK_NULL_HANDLE;
+    other.m_desc = {};
+}
+
+VulkanGraphicsContext& VulkanGraphicsContext::operator=(VulkanGraphicsContext&& other) noexcept
+{
+    Destroy();
+
+    m_instance = other.m_instance;
+    m_debug_messenger = other.m_debug_messenger;
+    m_desc = Opal::Move(other.m_desc);
+
+    other.m_instance = VK_NULL_HANDLE;
+    other.m_debug_messenger = VK_NULL_HANDLE;
+    other.m_desc = {};
+
+    return *this;
+}
+
 bool VulkanGraphicsContext::Init(const VulkanGraphicsContextDesc& desc)
 {
     // Check if all the requested instance extensions are supported
