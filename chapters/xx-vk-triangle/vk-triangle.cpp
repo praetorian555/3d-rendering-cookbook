@@ -12,17 +12,19 @@
 #include "opal/container/in-place-array.h"
 #include "opal/container/ref.h"
 #include "opal/container/string.h"
+#include "opal/math/transform.h"
 #include "opal/paths.h"
 #include "opal/time.h"
 
+#include "rndr/application.hpp"
 #include "rndr/file.h"
-#include "rndr/input.h"
+#include "rndr/generic-window.hpp"
+#include "rndr/input-system.hpp"
+#include "rndr/log.h"
 #include "rndr/projections.h"
-#include "rndr/rndr.h"
-#include "rndr/window.h"
 
 #include "types.h"
-#include "opal/math/transform.h"
+#include "vulkan/vulkan-graphics-context.hpp"
 
 static constexpr i32 k_max_frames_in_flight = 2;
 
@@ -72,19 +74,21 @@ const Opal::DynamicArray<Vertex> g_vertices = {{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0
 
 const Opal::DynamicArray<u16> g_indices = {0, 1, 2, 2, 3, 0};
 
-#define VK_CHECK(expr)                                  \
-    do                                                  \
-    {                                                   \
-        [[maybe_unused]] const VkResult result_ = expr; \
-        RNDR_ASSERT(result_ == VK_SUCCESS);             \
+#define VK_CHECK(expr)                                                  \
+    do                                                                  \
+    {                                                                   \
+        [[maybe_unused]] const VkResult result_ = expr;                 \
+        RNDR_ASSERT(result_ == VK_SUCCESS, "Vulkan operation failed!"); \
     } while (0)
 
-void Run();
+void Run(Rndr::Application* app);
 int main()
 {
-    Rndr::Init(Rndr::RndrDesc{.enable_input_system = true});
-    Run();
-    Rndr::Destroy();
+    Rndr::ApplicationDesc desc{.enable_input_system = true};
+    Rndr::Application* app = Rndr::Application::Create(desc);
+    RNDR_ASSERT(app != nullptr, "Failed to create app!");
+    Run(app);
+    Rndr::Application::Destroy();
     return 0;
 }
 
@@ -92,7 +96,7 @@ struct VulkanRendererDesc
 {
     bool enable_validation_layers = false;
     Opal::ArrayView<Opal::StringUtf8> required_instance_extensions;
-    Opal::Ref<Rndr::Window> window;
+    Opal::Ref<Rndr::GenericWindow> window;
 };
 
 struct VulkanRenderer
@@ -118,14 +122,9 @@ struct VulkanRenderer
 
     void OnResize();
 
-    Opal::DynamicArray<const char*> GetRequiredInstanceExtensions();
-
-    static Opal::DynamicArray<VkExtensionProperties> GetSupportedInstanceExtensions();
     static u32 FindMemoryType(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties);
 
 private:
-    void CreateInstance();
-    void SetupDebugMessenger();
     void CreateSurface();
     void PickPhysicalDevice();
     bool IsDeviceSuitable(const VkPhysicalDevice& device);
@@ -160,9 +159,8 @@ private:
     void UpdateUniformBuffer(u32 current_frame);
 
     VulkanRendererDesc m_desc;
-    VkInstance m_instance = VK_NULL_HANDLE;
+    VulkanGraphicsContext m_graphics_context;
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;
-    VkDebugUtilsMessengerEXT m_debug_messenger = VK_NULL_HANDLE;
     VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
     VkDevice m_device = VK_NULL_HANDLE;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
@@ -200,30 +198,26 @@ private:
     bool m_has_frame_buffer_resized = false;
 };
 
-void Run()
+void Run(Rndr::Application* app)
 {
-    Rndr::Window window(Rndr::WindowDesc{.width = 800, .height = 600, .name = "Vulkan Triangle Example"});
+    Rndr::GenericWindow* window = app->CreateGenericWindow({.width = 800, .height = 600, .name = "Vulkan Triangle Example"});
     const VulkanRendererDesc renderer_desc{.enable_validation_layers = true, .window = Opal::Ref(window)};
     VulkanRenderer renderer(renderer_desc);
 
-    window.on_resize.Bind(
-        [&renderer](i32 width, i32 height)
-        {
-            RNDR_UNUSED(width);
-            RNDR_UNUSED(height);
-            renderer.OnResize();
-        });
+    app->on_window_resize.Bind([&renderer](const Rndr::GenericWindow&, i32, i32) { renderer.OnResize(); });
 
     f32 delta_seconds = 1 / 60.0f;
-    while (!window.IsClosed())
+    while (!window->IsClosed())
     {
         const f64 start_time = Opal::GetSeconds();
 
-        window.ProcessEvents();
-        Rndr::InputSystem::ProcessEvents(delta_seconds);
+        app->ProcessSystemEvents(delta_seconds);
+
+        i32 x, y, width, height;
+        window->GetPositionAndSize(x, y, width, height);
 
         // Detect if we are minimized
-        const Rndr::Vector2f window_size = window.GetSize();
+        const Rndr::Vector2f window_size = {static_cast<float>(width), static_cast<float>(height)};
         if (window_size.x != 0 && window_size.y != 0)
         {
             renderer.Draw();
@@ -232,17 +226,8 @@ void Run()
         const f64 end_time = Opal::GetSeconds();
         delta_seconds = static_cast<f32>(end_time - start_time);
     }
-}
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT message_severity,
-                                                    VkDebugUtilsMessageTypeFlagsEXT message_type,
-                                                    const VkDebugUtilsMessengerCallbackDataEXT* callback_data, void* user_data)
-{
-    RNDR_UNUSED(message_severity);
-    RNDR_UNUSED(message_type);
-    RNDR_UNUSED(user_data);
-    RNDR_LOG_INFO("Validation Layer: %s", callback_data->pMessage);
-    return VK_FALSE;
+    app->DestroyGenericWindow(window);
 }
 
 void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debug_messenger, const VkAllocationCallbacks* allocator)
@@ -256,8 +241,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 
 VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc))
 {
-    CreateInstance();
-    SetupDebugMessenger();
+    m_graphics_context.Init();
     CreateSurface();
     PickPhysicalDevice();
     CreateLogicalDevice();
@@ -311,169 +295,19 @@ VulkanRenderer::~VulkanRenderer()
     }
     vkDestroySwapchainKHR(m_device, m_swap_chain, nullptr);
     vkDestroyDevice(m_device, nullptr);
-    vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
-    if (m_desc.enable_validation_layers)
-    {
-        DestroyDebugUtilsMessengerEXT(m_instance, m_debug_messenger, nullptr);
-    }
-    vkDestroyInstance(m_instance, nullptr);
-}
-
-void VulkanRenderer::CreateInstance()
-{
-    // Check if all the requested instance extensions are supported
-    Opal::DynamicArray<const char*> required_extensions = GetRequiredInstanceExtensions();
-    const Opal::DynamicArray<VkExtensionProperties> supported_extensions = GetSupportedInstanceExtensions();
-    for (const char* required_extension_name : required_extensions)
-    {
-        bool is_found = false;
-        for (const VkExtensionProperties& supported_extension : supported_extensions)
-        {
-            if (strcmp(required_extension_name, supported_extension.extensionName) == 0)
-            {
-                is_found = true;
-                break;
-            }
-        }
-        if (!is_found)
-        {
-            RNDR_ASSERT(false);
-            return;
-        }
-    }
-
-    // Check if validation layers are available
-    if (m_desc.enable_validation_layers)
-    {
-        u32 available_layer_count = 0;
-        vkEnumerateInstanceLayerProperties(&available_layer_count, nullptr);
-
-        Opal::DynamicArray<VkLayerProperties> available_layers;
-        available_layers.Resize(available_layer_count);
-        vkEnumerateInstanceLayerProperties(&available_layer_count, available_layers.GetData());
-
-        for (const char* validation_layer_name : m_validation_layers)
-        {
-            bool is_found = false;
-            for (const VkLayerProperties& available_layer : available_layers)
-            {
-                if (strcmp(validation_layer_name, available_layer.layerName) == 0)
-                {
-                    is_found = true;
-                    break;
-                }
-            }
-            if (!is_found)
-            {
-                RNDR_ASSERT(false);
-                return;
-            }
-        }
-    }
-
-    VkApplicationInfo app_info{};
-    app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    app_info.pApplicationName = "Vulkan Triangle Example";
-    app_info.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.pEngineName = "RNDR";
-    app_info.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    app_info.apiVersion = VK_API_VERSION_1_0;
-
-    VkInstanceCreateInfo create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    create_info.pApplicationInfo = &app_info;
-    create_info.enabledExtensionCount = static_cast<u32>(required_extensions.GetSize());
-    create_info.ppEnabledExtensionNames = required_extensions.GetData();
-    if (m_desc.enable_validation_layers)
-    {
-        create_info.enabledLayerCount = static_cast<u32>(m_validation_layers.GetSize());
-        create_info.ppEnabledLayerNames = m_validation_layers.GetData();
-    }
-    else
-    {
-        create_info.enabledLayerCount = 0;
-    }
-
-    VK_CHECK(vkCreateInstance(&create_info, nullptr, &m_instance));
-}
-
-Opal::DynamicArray<const char*> VulkanRenderer::GetRequiredInstanceExtensions()
-{
-    Opal::DynamicArray<const char*> required_extension_names;
-    if (m_desc.required_instance_extensions.GetSize() > 0)
-    {
-        required_extension_names.Resize(m_desc.required_instance_extensions.GetSize());
-        for (int i = 0; i < m_desc.required_instance_extensions.GetSize(); ++i)
-        {
-            required_extension_names[i] = m_desc.required_instance_extensions[i].GetData();
-        }
-    }
-    required_extension_names.PushBack("VK_KHR_surface");
-#if defined(OPAL_PLATFORM_WINDOWS)
-    required_extension_names.PushBack("VK_KHR_win32_surface");
-#endif
-    if (m_desc.enable_validation_layers)
-    {
-        required_extension_names.PushBack(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-    }
-    return required_extension_names;
-}
-
-Opal::DynamicArray<VkExtensionProperties> VulkanRenderer::GetSupportedInstanceExtensions()
-{
-    u32 count = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
-
-    Opal::DynamicArray<VkExtensionProperties> extensions;
-    if (count == 0)
-    {
-        return extensions;
-    }
-    extensions.Resize(count);
-    vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.GetData());
-    return extensions;
-}
-
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* create_info,
-                                      const VkAllocationCallbacks* allocator, VkDebugUtilsMessengerEXT* debug_messenger)
-{
-    auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
-    if (func != nullptr)
-    {
-        return func(instance, create_info, allocator, debug_messenger);
-    }
-    return VK_ERROR_EXTENSION_NOT_PRESENT;
-}
-
-void VulkanRenderer::SetupDebugMessenger()
-{
-    if (!m_desc.enable_validation_layers)
-    {
-        return;
-    }
-
-    VkDebugUtilsMessengerCreateInfoEXT create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    create_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-                                  VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    create_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                              VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    create_info.pfnUserCallback = DebugCallback;
-    create_info.pUserData = nullptr;
-
-    VK_CHECK(CreateDebugUtilsMessengerEXT(m_instance, &create_info, nullptr, &m_debug_messenger));
+    vkDestroySurfaceKHR(m_graphics_context.GetInstance(), m_surface, nullptr);
+    m_graphics_context.Destroy();
 }
 
 void VulkanRenderer::CreateSurface()
 {
-
 #if defined(OPAL_PLATFORM_WINDOWS)
     VkWin32SurfaceCreateInfoKHR surface_create_info{};
     surface_create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    surface_create_info.hwnd = m_desc.window->GetNativeWindowHandle();
+    surface_create_info.hwnd = reinterpret_cast<HWND>(m_desc.window->GetNativeHandle());
     surface_create_info.hinstance = GetModuleHandle(nullptr);
 
-    VK_CHECK(vkCreateWin32SurfaceKHR(m_instance, &surface_create_info, nullptr, &m_surface));
+    VK_CHECK(vkCreateWin32SurfaceKHR(m_graphics_context.GetInstance(), &surface_create_info, nullptr, &m_surface));
 #else
 #error Surface creation is not supported on this platform!
 #endif
@@ -482,11 +316,11 @@ void VulkanRenderer::CreateSurface()
 void VulkanRenderer::PickPhysicalDevice()
 {
     u32 device_count = 0;
-    vkEnumeratePhysicalDevices(m_instance, &device_count, nullptr);
-    RNDR_ASSERT(device_count > 0);
+    vkEnumeratePhysicalDevices(m_graphics_context.GetInstance(), &device_count, nullptr);
+    RNDR_ASSERT(device_count > 0, "No physical devices found!");
 
     Opal::DynamicArray<VkPhysicalDevice> devices(device_count);
-    vkEnumeratePhysicalDevices(m_instance, &device_count, devices.GetData());
+    vkEnumeratePhysicalDevices(m_graphics_context.GetInstance(), &device_count, devices.GetData());
     for (const VkPhysicalDevice& device : devices)
     {
         if (IsDeviceSuitable(device))
@@ -495,7 +329,7 @@ void VulkanRenderer::PickPhysicalDevice()
             break;
         }
     }
-    RNDR_ASSERT(m_physical_device != VK_NULL_HANDLE);
+    RNDR_ASSERT(m_physical_device != VK_NULL_HANDLE, "No phyisical device is suitable!");
 }
 
 bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
@@ -662,7 +496,7 @@ VulkanRenderer::SwapChainSupportDetails VulkanRenderer::QuerySwapChainSupport(co
 
 VkSurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(const Opal::DynamicArray<VkSurfaceFormatKHR>& available_formats)
 {
-    RNDR_ASSERT(available_formats.GetSize() > 0);
+    RNDR_ASSERT(available_formats.GetSize() > 0, "No surface formats available!");
     for (const VkSurfaceFormatKHR& format : available_formats)
     {
         if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
@@ -692,7 +526,10 @@ VkExtent2D VulkanRenderer::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capa
         return capabilities.currentExtent;
     }
 
-    const Rndr::Vector2f size = m_desc.window->GetSize();
+    i32 x, y, width, height;
+    m_desc.window->GetPositionAndSize(x, y, width, height);
+
+    const Rndr::Vector2f size = {static_cast<f32>(width), static_cast<f32>(height)};
     VkExtent2D actual_extent = {static_cast<u32>(size.x), static_cast<u32>(size.y)};
     actual_extent.width = Opal::Clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
     actual_extent.height = Opal::Clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
@@ -1068,7 +905,7 @@ void VulkanRenderer::Draw()
         RecreateSwapChain();
         return;
     }
-    RNDR_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR);
+    RNDR_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "Failed to acquire next image from the swap chain!");
 
     vkResetFences(m_device, 1, &m_in_flight_fences[m_current_frame_in_flight]);
 
