@@ -13,7 +13,10 @@ struct VulkanDeviceDesc
     Opal::DynamicArray<const char*> extensions;
     VkQueueFlags queue_flags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
     bool use_swap_chain = true;
+    Opal::Ref<class VulkanSurface> surface;
 };
+
+
 
 class VulkanPhysicalDevice
 {
@@ -39,6 +42,7 @@ public:
     [[nodiscard]] const Opal::DynamicArray<VkQueueFamilyProperties>& GetQueueFamilyProperties() const { return m_queue_family_properties; }
     [[nodiscard]] const Opal::DynamicArray<Opal::StringUtf8>& GetSupportedExtensions() const { return m_supported_extensions; }
     [[nodiscard]] Opal::Expected<u32, VkResult> GetQueueFamilyIndex(VkQueueFlags queue_flags) const;
+    [[nodiscard]] Opal::Expected<u32, VkResult> GetPresentQueueFamilyIndex(const class VulkanSurface& surface) const;
 
     [[nodiscard]] bool IsExtensionSupported(const char* extension_name) const;
 
@@ -70,6 +74,7 @@ public:
     [[nodiscard]] const VulkanPhysicalDevice& GetPhysicalDevice() const { return m_physical_device; }
     [[nodiscard]] VkPhysicalDevice GetNativePhysicalDevice() const { return m_physical_device.GetNativePhysicalDevice(); }
     [[nodiscard]] const VulkanDeviceDesc& GetDesc() const { return m_desc; }
+    [[nodiscard]] VulkanSwapChainSupportDetails GetSwapChainSupportDetails(const VulkanSurface& surface) const;
 
 private:
     VkDevice m_device = VK_NULL_HANDLE;

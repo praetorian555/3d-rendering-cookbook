@@ -3,6 +3,7 @@
 #include "rndr/return-macros.hpp"
 
 #include "types.h"
+#include "vulkan-swap-chain.hpp"
 
 VulkanPhysicalDevice::VulkanPhysicalDevice(VkPhysicalDevice physical_device)
 {
@@ -96,6 +97,21 @@ Opal::Expected<u32, VkResult> VulkanPhysicalDevice::GetQueueFamilyIndex(VkQueueF
     return Opal::Expected<u32, VkResult>(VK_ERROR_FEATURE_NOT_PRESENT);
 }
 
+Opal::Expected<u32, VkResult> VulkanPhysicalDevice::GetPresentQueueFamilyIndex(const class VulkanSurface& surface) const
+{
+    for (u32 i = 0; i < m_queue_family_properties.GetSize(); i++)
+    {
+        const VkQueueFamilyProperties& props = m_queue_family_properties[i];
+        VkBool32 present_support = 0;
+        vkGetPhysicalDeviceSurfaceSupportKHR(m_physical_device, i, surface.GetNativeSurface(), &present_support);
+        if (present_support)
+        {
+            return Opal::Expected<u32, VkResult>(i);
+        }
+    }
+    return Opal::Expected<u32, VkResult>(VK_ERROR_FEATURE_NOT_PRESENT);
+}
+
 bool VulkanPhysicalDevice::IsExtensionSupported(const char* extension_name) const
 {
     bool is_found = false;
@@ -167,6 +183,22 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
         queue_create_info.queueCount = 1;
         queue_create_info.pQueuePriorities = &k_queue_priority;
         queue_create_infos.PushBack(queue_create_info);
+    }
+
+    if (desc.surface.IsValid())
+    {
+        auto details = desc.surface->GetSwapChainSupportDetails(physical_device);
+        auto present_queue_family_index = physical_device.GetPresentQueueFamilyIndex(desc.surface);
+        RNDR_RETURN_ON_FAIL(present_queue_family_index.HasValue(), false, "Present queue family index is invalid!", RNDR_NOOP);
+        if (present_queue_family_index.GetValue() != queue_family_index.GetValue())
+        {
+            VkDeviceQueueCreateInfo queue_create_info{};
+            queue_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            queue_create_info.queueFamilyIndex = present_queue_family_index.GetValue();
+            queue_create_info.queueCount = 1;
+            queue_create_info.pQueuePriorities = &k_queue_priority;
+            queue_create_infos.PushBack(queue_create_info);
+        }
     }
 
     Opal::DynamicArray device_extensions(desc.extensions);
