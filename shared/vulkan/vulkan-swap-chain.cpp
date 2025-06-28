@@ -187,10 +187,12 @@ bool VulkanSwapChain::Init(const VulkanDevice& device, const VulkanSurface& surf
     create_info.imageArrayLayers = 1;
     create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    VulkanQueueFamilyIndices queue_family_indices = device.GetQueueFamilyIndices();
+    const VulkanQueueFamilyIndices queue_family_indices = device.GetQueueFamilyIndices();
     auto queue_family_indices_array = queue_family_indices.GetValidQueueFamilies();
     if (queue_family_indices.graphics_family != queue_family_indices.present_family)
     {
+        // If graphics and present queues are different, we use VK_SHARING_MODE_CONCURRENT
+        // to allow concurrent access to the resources from different queues
         create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         create_info.queueFamilyIndexCount = static_cast<u32>(queue_family_indices_array.GetSize());
         create_info.pQueueFamilyIndices = queue_family_indices_array.GetData();
