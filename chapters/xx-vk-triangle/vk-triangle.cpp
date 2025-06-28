@@ -132,7 +132,6 @@ private:
     void CreateGraphicsPipeline();
     VkShaderModule CreateShaderModule(const Opal::DynamicArray<u8>& code);
     void CreateFrameBuffers();
-    void CreateCommandPool();
     void CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& out_buffer,
                       VkDeviceMemory& out_buffer_memory);
     void CreateVertexBuffer();
@@ -152,6 +151,7 @@ private:
     VulkanGraphicsContext m_graphics_context;
     VulkanSurface m_surface;
     VulkanDevice m_device;
+    VulkanQueueFamilyIndices m_queue_family_indices;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_present_queue = VK_NULL_HANDLE;
     VulkanSwapChain m_swap_chain;
@@ -162,7 +162,6 @@ private:
     VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
     VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
     Opal::DynamicArray<VkFramebuffer> m_swap_chain_frame_buffers;
-    VkCommandPool m_command_pool = VK_NULL_HANDLE;
     VkBuffer m_vertex_buffer = VK_NULL_HANDLE;
     VkDeviceMemory m_vertex_buffer_memory = VK_NULL_HANDLE;
     VkBuffer m_index_buffer = VK_NULL_HANDLE;
@@ -224,6 +223,7 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
     VulkanDeviceDesc device_desc;
     device_desc.surface = m_surface;
     m_device.Init(Opal::Move(physical_devices[0]), device_desc);
+    m_queue_family_indices = m_device.GetQueueFamilyIndices();
     CreateQueues();
     auto window_size = m_desc.window->GetSize();
     RNDR_ASSERT(window_size.HasValue(), "Failed to get window size!");
@@ -234,7 +234,6 @@ VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc
     CreateDescriptorSetLayout();
     CreateGraphicsPipeline();
     CreateFrameBuffers();
-    CreateCommandPool();
     CreateVertexBuffer();
     CreateIndexBuffer();
     CreateUniformBuffers();
@@ -257,7 +256,6 @@ VulkanRenderer::~VulkanRenderer()
     vkFreeMemory(m_device.GetNativeDevice(), m_index_buffer_memory, nullptr);
     vkDestroyBuffer(m_device.GetNativeDevice(), m_vertex_buffer, nullptr);
     vkFreeMemory(m_device.GetNativeDevice(), m_vertex_buffer_memory, nullptr);
-    vkDestroyCommandPool(m_device.GetNativeDevice(), m_command_pool, nullptr);
     for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
     {
         vkDestroyFramebuffer(m_device.GetNativeDevice(), frame_buffer, nullptr);
@@ -272,6 +270,7 @@ VulkanRenderer::~VulkanRenderer()
     vkDestroyPipeline(m_device.GetNativeDevice(), m_graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(m_device.GetNativeDevice(), m_pipeline_layout, nullptr);
     vkDestroyRenderPass(m_device.GetNativeDevice(), m_render_pass, nullptr);
+    m_device.DestroyCommandBuffers(m_command_buffers, m_queue_family_indices.graphics_family);
     m_swap_chain.Destroy();
     m_surface.Destroy();
     m_device.Destroy();
@@ -489,31 +488,11 @@ void VulkanRenderer::CreateFrameBuffers()
     }
 }
 
-void VulkanRenderer::CreateCommandPool()
-{
-    VulkanQueueFamilyIndices queue_family_indices = m_device.GetQueueFamilyIndices();
-    RNDR_ASSERT(queue_family_indices.graphics_family != VulkanQueueFamilyIndices::k_invalid_index,
-                "Graphics queue family is not supported!");
-
-    VkCommandPoolCreateInfo pool_info{};
-    pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.queueFamilyIndex = queue_family_indices.graphics_family;
-    pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-
-    VK_CHECK(vkCreateCommandPool(m_device.GetNativeDevice(), &pool_info, nullptr, &m_command_pool));
-}
-
 void VulkanRenderer::CreateCommandBuffers()
 {
-    m_command_buffers.Resize(k_max_frames_in_flight);
-
-    VkCommandBufferAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc_info.commandPool = m_command_pool;
-    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc_info.commandBufferCount = static_cast<u32>(m_command_buffers.GetSize());
-
-    VK_CHECK(vkAllocateCommandBuffers(m_device.GetNativeDevice(), &alloc_info, m_command_buffers.GetData()));
+    const VulkanQueueFamilyIndices indices = m_device.GetQueueFamilyIndices();
+    m_command_buffers = m_device.CreateCommandBuffers(indices.graphics_family, k_max_frames_in_flight);
+    RNDR_ASSERT(m_command_buffers.GetSize() == k_max_frames_in_flight, "Failed to create command buffers!");
 }
 
 void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 image_index)
@@ -743,14 +722,9 @@ void VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, V
 
 void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkDeviceSize size)
 {
-    VkCommandBufferAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    alloc_info.commandPool = m_command_pool;
-    alloc_info.commandBufferCount = 1;
-
-    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-    VK_CHECK(vkAllocateCommandBuffers(m_device.GetNativeDevice(), &alloc_info, &command_buffer));
+    const VulkanQueueFamilyIndices indices = m_device.GetQueueFamilyIndices();
+    VkCommandBuffer command_buffer = m_device.CreateCommandBuffer(indices.graphics_family);
+    RNDR_ASSERT(command_buffer != VK_NULL_HANDLE, "Failed to create command buffer!");
 
     VkCommandBufferBeginInfo begin_info{};
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -772,7 +746,7 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
     vkQueueSubmit(m_graphics_queue, 1, &submit_info, VK_NULL_HANDLE);
     vkQueueWaitIdle(m_graphics_queue);
 
-    vkFreeCommandBuffers(m_device.GetNativeDevice(), m_command_pool, 1, &command_buffer);
+    m_device.DestroyCommandBuffer(command_buffer, indices.graphics_family);
 }
 
 void VulkanRenderer::CreateIndexBuffer()

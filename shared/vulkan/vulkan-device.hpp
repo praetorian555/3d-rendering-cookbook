@@ -3,10 +3,11 @@
 #include "vulkan/vulkan.hpp"
 
 #include "opal/container/dynamic-array.h"
+#include "opal/container/hash-map.h"
 #include "opal/container/string.h"
 
 #include "types.h"
-#include "vulkan-swap-chain.hpp"
+#include "vulkan/vulkan-swap-chain.hpp"
 
 struct VulkanDeviceDesc
 {
@@ -25,7 +26,7 @@ struct VulkanQueueFamilyIndices
     u32 compute_family = k_invalid_index;
     u32 transfer_family = k_invalid_index;
 
-    Opal::DynamicArray<u32> GetValidQueueFamilies() const;
+    [[nodiscard]] Opal::DynamicArray<u32> GetValidQueueFamilies() const;
 };
 
 class VulkanPhysicalDevice
@@ -86,8 +87,15 @@ public:
     [[nodiscard]] const VulkanDeviceDesc& GetDesc() const { return m_desc; }
     [[nodiscard]] const VulkanQueueFamilyIndices& GetQueueFamilyIndices() const { return m_queue_family_indices; }
 
+    VkCommandBuffer CreateCommandBuffer(u32 queue_family_index) const;
+    Opal::DynamicArray<VkCommandBuffer> CreateCommandBuffers(u32 queue_family_index, u32 count) const;
+
+    bool DestroyCommandBuffer(VkCommandBuffer command_buffer, u32 queue_family_index) const;
+    bool DestroyCommandBuffers(const Opal::DynamicArray<VkCommandBuffer>& command_buffers, u32 queue_family_index) const;
+
 private:
     VkDevice m_device = VK_NULL_HANDLE;
+    Opal::HashMap<u32, VkCommandPool> m_queue_family_index_to_command_pool;
     VulkanPhysicalDevice m_physical_device;
     VulkanDeviceDesc m_desc;
     VulkanQueueFamilyIndices m_queue_family_indices;

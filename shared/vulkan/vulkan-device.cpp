@@ -12,7 +12,7 @@ Opal::DynamicArray<u32> VulkanQueueFamilyIndices::GetValidQueueFamilies() const
     {
         valid_queue_families.PushBack(graphics_family);
     }
-    if (present_family != k_invalid_index)
+    if (present_family != k_invalid_index && present_family != graphics_family)
     {
         valid_queue_families.PushBack(present_family);
     }
@@ -157,6 +157,8 @@ bool VulkanPhysicalDevice::Destroy()
     return true;
 }
 
+// VulkanDevice Implementation ////////////////////////////////////////////////////////////////////////////////////////
+
 VulkanDevice::VulkanDevice(VulkanPhysicalDevice physical_device, const VulkanDeviceDesc& desc)
 {
     Init(Opal::Move(physical_device), desc);
@@ -169,11 +171,13 @@ VulkanDevice::~VulkanDevice()
 
 VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
     : m_device(other.m_device),
+      m_queue_family_index_to_command_pool(Opal::Move(other.m_queue_family_index_to_command_pool)),
       m_physical_device(Opal::Move(other.m_physical_device)),
       m_desc(Opal::Move(other.m_desc)),
       m_queue_family_indices(other.m_queue_family_indices)
 {
     other.m_device = VK_NULL_HANDLE;
+    other.m_queue_family_index_to_command_pool.clear();
     other.m_physical_device = {};
     other.m_desc = {};
     other.m_queue_family_indices = {};
@@ -184,11 +188,13 @@ VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
     Destroy();
 
     m_device = other.m_device;
+    m_queue_family_index_to_command_pool = Opal::Move(other.m_queue_family_index_to_command_pool);
     m_physical_device = Opal::Move(other.m_physical_device);
     m_desc = Opal::Move(other.m_desc);
     m_queue_family_indices = other.m_queue_family_indices;
 
     other.m_device = VK_NULL_HANDLE;
+    other.m_queue_family_index_to_command_pool.clear();
     other.m_physical_device = {};
     other.m_desc = {};
     other.m_queue_family_indices = {};
@@ -250,8 +256,22 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
     create_info.ppEnabledExtensionNames = device_extensions.GetData();
     create_info.enabledExtensionCount = static_cast<u32>(device_extensions.GetSize());
 
-    const VkResult result = vkCreateDevice(physical_device.GetNativePhysicalDevice(), &create_info, nullptr, &m_device);
+    VkResult result = vkCreateDevice(physical_device.GetNativePhysicalDevice(), &create_info, nullptr, &m_device);
     RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, false, "Failed to create device!", Destroy());
+
+    auto queue_family_indices_array = queue_family_indices.GetValidQueueFamilies();
+    for (u32 index : queue_family_indices_array)
+    {
+        VkCommandPoolCreateInfo pool_info{};
+        pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+        pool_info.queueFamilyIndex = queue_family_indices.graphics_family;
+        pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+        VkCommandPool command_pool;
+        result = vkCreateCommandPool(m_device, &pool_info, nullptr, &command_pool);
+        RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, false, "Failed to create command pool!", Destroy());
+        m_queue_family_index_to_command_pool.insert({index, command_pool});
+    }
 
     m_physical_device = Opal::Move(physical_device);
     m_desc = desc;
@@ -261,6 +281,11 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
 
 bool VulkanDevice::Destroy()
 {
+    for (auto p : m_queue_family_index_to_command_pool)
+    {
+        vkDestroyCommandPool(m_device, p.second, nullptr);
+    }
+    m_queue_family_index_to_command_pool.clear();
     if (m_device != VK_NULL_HANDLE)
     {
         vkDestroyDevice(m_device, nullptr);
@@ -268,5 +293,57 @@ bool VulkanDevice::Destroy()
     }
     m_physical_device = {};
     m_desc = {};
+    return true;
+}
+
+VkCommandBuffer VulkanDevice::CreateCommandBuffer(u32 queue_family_index) const
+{
+    const auto it = m_queue_family_index_to_command_pool.find(queue_family_index);
+    RNDR_RETURN_ON_FAIL(it != m_queue_family_index_to_command_pool.end(), VK_NULL_HANDLE, "Queue family index not supported!", RNDR_NOOP);
+
+    VkCommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = it->second;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = 1;
+
+    VkCommandBuffer command_buffer;
+    const VkResult result = vkAllocateCommandBuffers(m_device, &alloc_info, &command_buffer);
+    RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, VK_NULL_HANDLE, "Failed to allocate command buffer!", RNDR_NOOP);
+    return command_buffer;
+}
+
+Opal::DynamicArray<VkCommandBuffer> VulkanDevice::CreateCommandBuffers(u32 queue_family_index, u32 count) const
+{
+    RNDR_RETURN_ON_FAIL(count > 0, Opal::DynamicArray<VkCommandBuffer>(), "Count must be greater than zero!", RNDR_NOOP);
+
+    Opal::DynamicArray<VkCommandBuffer> command_buffers;
+    const auto it = m_queue_family_index_to_command_pool.find(queue_family_index);
+    RNDR_RETURN_ON_FAIL(it != m_queue_family_index_to_command_pool.end(), command_buffers, "Queue family index not supported!", RNDR_NOOP);
+
+    command_buffers.Resize(count);
+    VkCommandBufferAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    alloc_info.commandPool = it->second;
+    alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    alloc_info.commandBufferCount = count;
+    const VkResult result = vkAllocateCommandBuffers(m_device, &alloc_info, command_buffers.GetData());
+    RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, command_buffers, "Failed to allocate command buffers!", command_buffers.Clear());
+    return command_buffers;
+}
+
+bool VulkanDevice::DestroyCommandBuffer(VkCommandBuffer command_buffer, u32 queue_family_index) const
+{
+    const auto it = m_queue_family_index_to_command_pool.find(queue_family_index);
+    RNDR_RETURN_ON_FAIL(it != m_queue_family_index_to_command_pool.end(), false, "Queue family index not supported!", RNDR_NOOP);
+    vkFreeCommandBuffers(m_device, it->second, 1, &command_buffer);
+    return true;
+}
+
+bool VulkanDevice::DestroyCommandBuffers(const Opal::DynamicArray<VkCommandBuffer>& command_buffers, u32 queue_family_index) const
+{
+    const auto it = m_queue_family_index_to_command_pool.find(queue_family_index);
+    RNDR_RETURN_ON_FAIL(it != m_queue_family_index_to_command_pool.end(), false, "Queue family index not supported!", RNDR_NOOP);
+    vkFreeCommandBuffers(m_device, it->second, static_cast<u32>(command_buffers.GetSize()), command_buffers.GetData());
     return true;
 }
