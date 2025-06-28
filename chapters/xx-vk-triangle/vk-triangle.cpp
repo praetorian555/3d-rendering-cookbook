@@ -25,6 +25,7 @@
 
 #include "types.h"
 #include "vulkan/vulkan-graphics-context.hpp"
+#include "vulkan/vulkan-swap-chain.hpp"
 
 static constexpr i32 k_max_frames_in_flight = 2;
 
@@ -126,16 +127,6 @@ struct VulkanRenderer
 
 private:
     void CreateQueues();
-    void CreateSurface();
-    bool IsDeviceSuitable(const VkPhysicalDevice& device);
-    QueueFamilyIndices FindQueueFamilies(const VkPhysicalDevice& device);
-    bool CheckDeviceExtensionSupport(const VkPhysicalDevice& device);
-    SwapChainSupportDetails QuerySwapChainSupport(const VkPhysicalDevice& device);
-    VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const Opal::DynamicArray<VkSurfaceFormatKHR>& available_formats);
-    VkPresentModeKHR ChooseSwapPresentMode(const Opal::DynamicArray<VkPresentModeKHR>& available_present_modes);
-    VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
-    void CreateSwapChain();
-    void CreateImageViews();
     void CreateRenderPass();
     void CreateDescriptorSetLayout();
     void CreateGraphicsPipeline();
@@ -159,15 +150,11 @@ private:
 
     VulkanRendererDesc m_desc;
     VulkanGraphicsContext m_graphics_context;
-    VkSurfaceKHR m_surface = VK_NULL_HANDLE;
+    VulkanSurface m_surface;
     VulkanDevice m_device;
     VkQueue m_graphics_queue = VK_NULL_HANDLE;
     VkQueue m_present_queue = VK_NULL_HANDLE;
-    VkSwapchainKHR m_swap_chain = VK_NULL_HANDLE;
-    Opal::DynamicArray<VkImage> m_swap_chain_images;
-    VkFormat m_swap_chain_image_format;
-    VkExtent2D m_swap_chain_extent;
-    Opal::DynamicArray<VkImageView> m_swap_chain_image_views;
+    VulkanSwapChain m_swap_chain;
     VkViewport m_viewport;
     VkRect2D m_scissor;
     VkRenderPass m_render_pass = VK_NULL_HANDLE;
@@ -231,14 +218,18 @@ void Run(Rndr::Application* app)
 VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc))
 {
     m_graphics_context.Init();
-
+    m_surface.Init(m_graphics_context, m_desc.window->GetNativeHandle());
     auto physical_devices = m_graphics_context.EnumeratePhysicalDevices();
     RNDR_ASSERT(physical_devices.GetSize() > 0, "No physical devices found!");
-    m_device.Init(Opal::Move(physical_devices[0]));
+    VulkanDeviceDesc device_desc;
+    device_desc.surface = m_surface;
+    m_device.Init(Opal::Move(physical_devices[0]), device_desc);
     CreateQueues();
-    CreateSurface();
-    CreateSwapChain();
-    CreateImageViews();
+    auto window_size = m_desc.window->GetSize();
+    RNDR_ASSERT(window_size.HasValue(), "Failed to get window size!");
+    const u32 width = static_cast<u32>(window_size.GetValue().x);
+    const u32 height = static_cast<u32>(window_size.GetValue().y);
+    m_swap_chain.Init(m_device, m_surface, {.width = width, .height = height});
     CreateRenderPass();
     CreateDescriptorSetLayout();
     CreateGraphicsPipeline();
@@ -281,268 +272,16 @@ VulkanRenderer::~VulkanRenderer()
     vkDestroyPipeline(m_device.GetNativeDevice(), m_graphics_pipeline, nullptr);
     vkDestroyPipelineLayout(m_device.GetNativeDevice(), m_pipeline_layout, nullptr);
     vkDestroyRenderPass(m_device.GetNativeDevice(), m_render_pass, nullptr);
-    for (const VkImageView& image_view : m_swap_chain_image_views)
-    {
-        vkDestroyImageView(m_device.GetNativeDevice(), image_view, nullptr);
-    }
-    vkDestroySwapchainKHR(m_device.GetNativeDevice(), m_swap_chain, nullptr);
-    vkDestroySurfaceKHR(m_graphics_context.GetInstance(), m_surface, nullptr);
+    m_swap_chain.Destroy();
+    m_surface.Destroy();
     m_device.Destroy();
     m_graphics_context.Destroy();
-}
-
-void VulkanRenderer::CreateSurface()
-{
-#if defined(OPAL_PLATFORM_WINDOWS)
-    VkWin32SurfaceCreateInfoKHR surface_create_info{};
-    surface_create_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    surface_create_info.hwnd = reinterpret_cast<HWND>(m_desc.window->GetNativeHandle());
-    surface_create_info.hinstance = GetModuleHandle(nullptr);
-
-    VK_CHECK(vkCreateWin32SurfaceKHR(m_graphics_context.GetInstance(), &surface_create_info, nullptr, &m_surface));
-#else
-#error Surface creation is not supported on this platform!
-#endif
-}
-
-bool VulkanRenderer::IsDeviceSuitable(const VkPhysicalDevice& device)
-{
-    VkPhysicalDeviceProperties properties;
-    vkGetPhysicalDeviceProperties(device, &properties);
-    VkPhysicalDeviceFeatures features;
-    vkGetPhysicalDeviceFeatures(device, &features);
-
-    if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU || features.geometryShader == 0)
-    {
-        return false;
-    }
-
-    const QueueFamilyIndices queue_family_indices = FindQueueFamilies(device);
-    const bool are_queue_families_present =
-        queue_family_indices.graphics_family.has_value() && queue_family_indices.present_family.has_value();
-    if (!are_queue_families_present)
-    {
-        return false;
-    }
-
-    const bool extensions_supported = CheckDeviceExtensionSupport(device);
-    if (!extensions_supported)
-    {
-        return false;
-    }
-
-    const SwapChainSupportDetails swap_chain_details = QuerySwapChainSupport(device);
-    const bool is_swap_chain_adequate = !swap_chain_details.formats.IsEmpty() && !swap_chain_details.present_modes.IsEmpty();
-    return is_swap_chain_adequate;
-}
-
-VulkanRenderer::QueueFamilyIndices VulkanRenderer::FindQueueFamilies(const VkPhysicalDevice& device)
-{
-    QueueFamilyIndices queue_family_indices;
-
-    u32 count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, nullptr);
-
-    Opal::DynamicArray<VkQueueFamilyProperties> queue_families(count);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &count, queue_families.GetData());
-    i32 i = 0;
-    for (const VkQueueFamilyProperties& queue_family : queue_families)
-    {
-        if (queue_family.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-        {
-            queue_family_indices.graphics_family = i;
-        }
-        VkBool32 present_support = 0;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, m_surface, &present_support);
-        if (present_support != 0)
-        {
-            queue_family_indices.present_family = i;
-        }
-        i++;
-    }
-
-    return queue_family_indices;
-}
-
-bool VulkanRenderer::CheckDeviceExtensionSupport(const VkPhysicalDevice& device)
-{
-    u32 extension_count = 0;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
-
-    Opal::DynamicArray<VkExtensionProperties> available_extensions(extension_count);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extensions.GetData());
-
-    const Opal::DynamicArray<const char*> required_extensions = m_device_extensions;
-    for (const char* required_extension_name : m_device_extensions)
-    {
-        bool is_found = false;
-        for (const VkExtensionProperties& available_extension : available_extensions)
-        {
-            if (strcmp(required_extension_name, available_extension.extensionName) == 0)
-            {
-                is_found = true;
-                break;
-            }
-        }
-        if (!is_found)
-        {
-            return false;
-        }
-    }
-    return true;
-}
-
-VulkanRenderer::SwapChainSupportDetails VulkanRenderer::QuerySwapChainSupport(const VkPhysicalDevice& device)
-{
-    SwapChainSupportDetails details;
-
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, m_surface, &details.capabilities);
-
-    u32 format_count = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, nullptr);
-    if (format_count > 0)
-    {
-        details.formats.Resize(format_count);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, m_surface, &format_count, details.formats.GetData());
-    }
-
-    u32 present_mode_count = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &present_mode_count, nullptr);
-    if (present_mode_count != 0)
-    {
-        details.present_modes.Resize(present_mode_count);
-        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(device, m_surface, &present_mode_count, details.present_modes.GetData()));
-    }
-
-    return details;
-}
-
-VkSurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(const Opal::DynamicArray<VkSurfaceFormatKHR>& available_formats)
-{
-    RNDR_ASSERT(available_formats.GetSize() > 0, "No surface formats available!");
-    for (const VkSurfaceFormatKHR& format : available_formats)
-    {
-        if (format.format == VK_FORMAT_B8G8R8A8_SRGB && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
-        {
-            return format;
-        }
-    }
-    return available_formats[0];
-}
-
-VkPresentModeKHR VulkanRenderer::ChooseSwapPresentMode(const Opal::DynamicArray<VkPresentModeKHR>& available_present_modes)
-{
-    for (const VkPresentModeKHR& present_mode : available_present_modes)
-    {
-        if (present_mode == VK_PRESENT_MODE_MAILBOX_KHR)
-        {
-            return present_mode;
-        }
-    }
-    return VK_PRESENT_MODE_FIFO_KHR;
-}
-
-VkExtent2D VulkanRenderer::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
-{
-    if (capabilities.currentExtent.width != UINT32_MAX)
-    {
-        return capabilities.currentExtent;
-    }
-
-    i32 x, y, width, height;
-    m_desc.window->GetPositionAndSize(x, y, width, height);
-
-    const Rndr::Vector2f size = {static_cast<f32>(width), static_cast<f32>(height)};
-    VkExtent2D actual_extent = {static_cast<u32>(size.x), static_cast<u32>(size.y)};
-    actual_extent.width = Opal::Clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-    actual_extent.height = Opal::Clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
-
-    return actual_extent;
-}
-
-void VulkanRenderer::CreateSwapChain()
-{
-    const SwapChainSupportDetails swap_chain_support = QuerySwapChainSupport(m_device.GetNativePhysicalDevice());
-    const VkSurfaceFormatKHR surface_format = ChooseSwapSurfaceFormat(swap_chain_support.formats);
-    const VkPresentModeKHR present_mode = ChooseSwapPresentMode(swap_chain_support.present_modes);
-    const VkExtent2D extent = ChooseSwapExtent(swap_chain_support.capabilities);
-
-    u32 image_count = swap_chain_support.capabilities.minImageCount + 1;
-    if (swap_chain_support.capabilities.maxImageCount > 0 && image_count > swap_chain_support.capabilities.maxImageCount)
-    {
-        image_count = swap_chain_support.capabilities.maxImageCount;
-    }
-
-    VkSwapchainCreateInfoKHR create_info{};
-    create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-    create_info.surface = m_surface;
-    create_info.minImageCount = image_count;
-    create_info.imageFormat = surface_format.format;
-    create_info.imageColorSpace = surface_format.colorSpace;
-    create_info.imageExtent = extent;
-    create_info.imageArrayLayers = 1;
-    create_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-    QueueFamilyIndices all_queue_family_indices = FindQueueFamilies(m_device.GetNativePhysicalDevice());
-    const u32 queue_family_indices[] = {all_queue_family_indices.graphics_family.value(), all_queue_family_indices.present_family.value()};
-    if (all_queue_family_indices.graphics_family != all_queue_family_indices.present_family)
-    {
-        create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-        create_info.queueFamilyIndexCount = 2;
-        create_info.pQueueFamilyIndices = queue_family_indices;
-    }
-    else
-    {
-        create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        create_info.queueFamilyIndexCount = 0;
-        create_info.pQueueFamilyIndices = nullptr;
-    }
-
-    create_info.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;  // swap_chain_support.capabilities.currentTransform;
-    create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    create_info.presentMode = present_mode;
-    // If set to VK_TRUE it means that we don't care about the color of the pixels if they are occluded by other window.
-    create_info.clipped = VK_TRUE;
-    create_info.oldSwapchain = VK_NULL_HANDLE;
-
-    VK_CHECK(vkCreateSwapchainKHR(m_device.GetNativeDevice(), &create_info, nullptr, &m_swap_chain));
-
-    VK_CHECK(vkGetSwapchainImagesKHR(m_device.GetNativeDevice(), m_swap_chain, &image_count, nullptr));
-    m_swap_chain_images.Resize(image_count);
-    VK_CHECK(vkGetSwapchainImagesKHR(m_device.GetNativeDevice(), m_swap_chain, &image_count, m_swap_chain_images.GetData()));
-
-    m_swap_chain_image_format = surface_format.format;
-    m_swap_chain_extent = extent;
-}
-
-void VulkanRenderer::CreateImageViews()
-{
-    m_swap_chain_image_views.Resize(m_swap_chain_images.GetSize());
-    for (u32 i = 0; i < m_swap_chain_image_views.GetSize(); ++i)
-    {
-        VkImageViewCreateInfo create_info{};
-        create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        create_info.image = m_swap_chain_images[i];
-        create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        create_info.format = m_swap_chain_image_format;
-        create_info.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-        create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        create_info.subresourceRange.baseMipLevel = 0;
-        create_info.subresourceRange.levelCount = 1;
-        create_info.subresourceRange.baseArrayLayer = 0;
-        create_info.subresourceRange.layerCount = 1;
-
-        VK_CHECK(vkCreateImageView(m_device.GetNativeDevice(), &create_info, nullptr, &m_swap_chain_image_views[i]));
-    }
 }
 
 void VulkanRenderer::CreateRenderPass()
 {
     VkAttachmentDescription color_attachment{};
-    color_attachment.format = m_swap_chain_image_format;
+    color_attachment.format = m_swap_chain.GetDesc().pixel_format;
     color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
     color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -628,13 +367,13 @@ void VulkanRenderer::CreateGraphicsPipeline()
 
     m_viewport.x = 0.0f;
     m_viewport.y = 0.0f;
-    m_viewport.width = static_cast<f32>(m_swap_chain_extent.width);
-    m_viewport.height = static_cast<f32>(m_swap_chain_extent.height);
+    m_viewport.width = static_cast<f32>(m_swap_chain.GetExtent().width);
+    m_viewport.height = static_cast<f32>(m_swap_chain.GetExtent().height);
     m_viewport.minDepth = 0.0f;
     m_viewport.maxDepth = 1.0f;
 
     m_scissor.offset = {.x = 0, .y = 0};
-    m_scissor.extent = m_swap_chain_extent;
+    m_scissor.extent = m_swap_chain.GetExtent();
 
     VkPipelineViewportStateCreateInfo viewport_state{};
     viewport_state.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -731,18 +470,19 @@ VkShaderModule VulkanRenderer::CreateShaderModule(const Opal::DynamicArray<u8>& 
 
 void VulkanRenderer::CreateFrameBuffers()
 {
-    m_swap_chain_frame_buffers.Resize(m_swap_chain_image_views.GetSize());
-    for (u32 i = 0; i < m_swap_chain_image_views.GetSize(); ++i)
+    const auto& image_views = m_swap_chain.GetImageViews();
+    m_swap_chain_frame_buffers.Resize(image_views.GetSize());
+    for (u32 i = 0; i < image_views.GetSize(); ++i)
     {
-        const VkImageView attachments[] = {m_swap_chain_image_views[i]};
+        const VkImageView attachments[] = {image_views[i]};
 
         VkFramebufferCreateInfo frame_buffer_info{};
         frame_buffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         frame_buffer_info.renderPass = m_render_pass;
         frame_buffer_info.attachmentCount = 1;
         frame_buffer_info.pAttachments = attachments;
-        frame_buffer_info.width = m_swap_chain_extent.width;
-        frame_buffer_info.height = m_swap_chain_extent.height;
+        frame_buffer_info.width = m_swap_chain.GetExtent().width;
+        frame_buffer_info.height = m_swap_chain.GetExtent().height;
         frame_buffer_info.layers = 1;
 
         VK_CHECK(vkCreateFramebuffer(m_device.GetNativeDevice(), &frame_buffer_info, nullptr, &m_swap_chain_frame_buffers[i]));
@@ -751,11 +491,13 @@ void VulkanRenderer::CreateFrameBuffers()
 
 void VulkanRenderer::CreateCommandPool()
 {
-    QueueFamilyIndices queue_family_indices = FindQueueFamilies(m_device.GetNativePhysicalDevice());
+    VulkanQueueFamilyIndices queue_family_indices = m_device.GetQueueFamilyIndices();
+    RNDR_ASSERT(queue_family_indices.graphics_family != VulkanQueueFamilyIndices::k_invalid_index,
+                "Graphics queue family is not supported!");
 
     VkCommandPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    pool_info.queueFamilyIndex = queue_family_indices.graphics_family.value();
+    pool_info.queueFamilyIndex = queue_family_indices.graphics_family;
     pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     VK_CHECK(vkCreateCommandPool(m_device.GetNativeDevice(), &pool_info, nullptr, &m_command_pool));
@@ -788,7 +530,7 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
     render_pass_info.renderPass = m_render_pass;
     render_pass_info.framebuffer = m_swap_chain_frame_buffers[image_index];
     render_pass_info.renderArea.offset = {0, 0};
-    render_pass_info.renderArea.extent = m_swap_chain_extent;
+    render_pass_info.renderArea.extent = m_swap_chain.GetExtent();
 
     const VkClearValue clear_color = {0.0f, 0.0f, 0.0f, 1.0f};
     render_pass_info.clearValueCount = 1;
@@ -821,8 +563,8 @@ void VulkanRenderer::Draw()
 
     // Acquire an image from the swap chain
     u32 image_index = 0;
-    VkResult result = vkAcquireNextImageKHR(m_device.GetNativeDevice(), m_swap_chain, UINT64_MAX, m_image_available_semaphores[m_current_frame_in_flight],
-                                            VK_NULL_HANDLE, &image_index);
+    VkResult result = vkAcquireNextImageKHR(m_device.GetNativeDevice(), m_swap_chain.GetNativeSwapChain(), UINT64_MAX,
+                                            m_image_available_semaphores[m_current_frame_in_flight], VK_NULL_HANDLE, &image_index);
     if (result == VK_ERROR_OUT_OF_DATE_KHR)
     {
         RecreateSwapChain();
@@ -861,7 +603,7 @@ void VulkanRenderer::Draw()
     present_info.waitSemaphoreCount = 1;
     present_info.pWaitSemaphores = signal_semaphores;
 
-    const VkSwapchainKHR swap_chains[] = {m_swap_chain};
+    const VkSwapchainKHR swap_chains[] = {m_swap_chain.GetNativeSwapChain()};
     present_info.swapchainCount = 1;
     present_info.pSwapchains = swap_chains;
     present_info.pImageIndices = &image_index;
@@ -903,14 +645,18 @@ void VulkanRenderer::RecreateSwapChain()
 
     CleanUpSwapChain();
 
+    auto size = m_desc.window->GetSize();
+    RNDR_ASSERT(size.HasValue(), "Failed to get window size!");
+
     // TODO: Potentially here we would also like to recreate render pass if the image format changes.
-    CreateSwapChain();
+    const u32 width = static_cast<u32>(size.GetValue().x);
+    const u32 height = static_cast<u32>(size.GetValue().y);
+    m_swap_chain.Init(m_device, m_surface, {.width = width, .height = height});
 
-    m_viewport.width = static_cast<f32>(m_swap_chain_extent.width);
-    m_viewport.height = static_cast<f32>(m_swap_chain_extent.height);
-    m_scissor.extent = m_swap_chain_extent;
+    m_viewport.width = static_cast<f32>(m_swap_chain.GetExtent().width);
+    m_viewport.height = static_cast<f32>(m_swap_chain.GetExtent().height);
+    m_scissor.extent = m_swap_chain.GetExtent();
 
-    CreateImageViews();
     CreateFrameBuffers();
 }
 
@@ -920,12 +666,7 @@ void VulkanRenderer::CleanUpSwapChain()
     {
         vkDestroyFramebuffer(m_device.GetNativeDevice(), frame_buffer, nullptr);
     }
-    for (const VkImageView& image_view : m_swap_chain_image_views)
-    {
-        vkDestroyImageView(m_device.GetNativeDevice(), image_view, nullptr);
-    }
-    vkDestroySwapchainKHR(m_device.GetNativeDevice(), m_swap_chain, nullptr);
-    m_swap_chain = VK_NULL_HANDLE;
+    m_swap_chain.Destroy();
 }
 
 void VulkanRenderer::OnResize()
@@ -1102,7 +843,7 @@ void VulkanRenderer::UpdateUniformBuffer(u32 current_frame)
     ubo.model = Opal::Transpose(ubo.model);
     ubo.view = Opal::LookAt_RH(Rndr::Point3f{2.0f, 2.0f, 2.0f}, Rndr::Point3f{0.0f, 0.0f, 0.0f}, Rndr::Vector3f{0.0f, 0.0f, 1.0f});
     ubo.view = Opal::Transpose(ubo.view);
-    const f32 aspect_ratio = static_cast<f32>(m_swap_chain_extent.width) / static_cast<f32>(m_swap_chain_extent.height);
+    const f32 aspect_ratio = static_cast<f32>(m_swap_chain.GetExtent().width) / static_cast<f32>(m_swap_chain.GetExtent().height);
     ubo.projection = Rndr::PerspectiveVulkan(45.0f, aspect_ratio, 0.1f, 10.0f);
     ubo.projection = Opal::Transpose(ubo.projection);
 
