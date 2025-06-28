@@ -9,9 +9,9 @@
 #include <vulkan/vulkan_win32.h>
 #endif
 
-#include "vulkan-graphics-context.hpp"
+#include "vulkan/vulkan-graphics-context.hpp"
 
-VulkanSurface::VulkanSurface(const class VulkanGraphicsContext& context, Rndr::NativeWindowHandle window_handle)
+VulkanSurface::VulkanSurface(const VulkanGraphicsContext& context, Rndr::NativeWindowHandle window_handle)
 {
     Init(context, window_handle);
 }
@@ -21,7 +21,7 @@ VulkanSurface::~VulkanSurface()
     Destroy();
 }
 
-VulkanSurface::VulkanSurface(VulkanSurface&& other) noexcept : m_surface(other.m_surface), m_context(other.m_context)
+VulkanSurface::VulkanSurface(VulkanSurface&& other) noexcept : m_surface(other.m_surface), m_context(Opal::Move(other.m_context))
 {
     other.m_surface = VK_NULL_HANDLE;
     other.m_context = nullptr;
@@ -37,7 +37,7 @@ VulkanSurface& VulkanSurface::operator=(VulkanSurface&& other) noexcept
     return *this;
 }
 
-bool VulkanSurface::Init(const class VulkanGraphicsContext& context, Rndr::NativeWindowHandle window_handle)
+bool VulkanSurface::Init(const VulkanGraphicsContext& context, Rndr::NativeWindowHandle window_handle)
 {
 #if defined(OPAL_PLATFORM_WINDOWS)
     VkWin32SurfaceCreateInfoKHR surface_create_info{};
@@ -65,7 +65,7 @@ bool VulkanSurface::Destroy()
     return true;
 }
 
-VulkanSwapChainSupportDetails VulkanSurface::GetSwapChainSupportDetails(const class VulkanPhysicalDevice& device) const
+VulkanSwapChainSupportDetails VulkanSurface::GetSwapChainSupportDetails(const VulkanPhysicalDevice& device) const
 {
     VulkanSwapChainSupportDetails details;
 
@@ -85,7 +85,7 @@ VulkanSwapChainSupportDetails VulkanSurface::GetSwapChainSupportDetails(const cl
     {
         details.present_modes.Resize(present_mode_count);
         const VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(device.GetNativePhysicalDevice(), m_surface, &present_mode_count,
-                                                                    details.present_modes.GetData());
+                                                                          details.present_modes.GetData());
         RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, {}, "Failed to get present modes!", RNDR_NOOP);
     }
     return details;
