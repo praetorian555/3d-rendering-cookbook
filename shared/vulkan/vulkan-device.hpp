@@ -6,17 +6,27 @@
 #include "opal/container/string.h"
 
 #include "types.h"
+#include "vulkan-swap-chain.hpp"
 
 struct VulkanDeviceDesc
 {
-    VkPhysicalDeviceFeatures features;
+    VkPhysicalDeviceFeatures features = {};
     Opal::DynamicArray<const char*> extensions;
     VkQueueFlags queue_flags = VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT;
-    bool use_swap_chain = true;
     Opal::Ref<class VulkanSurface> surface;
 };
 
+struct VulkanQueueFamilyIndices
+{
+    static constexpr u32 k_invalid_index = 0xFFFFFFFF;
 
+    u32 graphics_family = k_invalid_index;
+    u32 present_family = k_invalid_index;
+    u32 compute_family = k_invalid_index;
+    u32 transfer_family = k_invalid_index;
+
+    Opal::DynamicArray<u32> GetValidQueueFamilies() const;
+};
 
 class VulkanPhysicalDevice
 {
@@ -74,9 +84,11 @@ public:
     [[nodiscard]] const VulkanPhysicalDevice& GetPhysicalDevice() const { return m_physical_device; }
     [[nodiscard]] VkPhysicalDevice GetNativePhysicalDevice() const { return m_physical_device.GetNativePhysicalDevice(); }
     [[nodiscard]] const VulkanDeviceDesc& GetDesc() const { return m_desc; }
+    [[nodiscard]] const VulkanQueueFamilyIndices& GetQueueFamilyIndices() const { return m_queue_family_indices; }
 
 private:
     VkDevice m_device = VK_NULL_HANDLE;
     VulkanPhysicalDevice m_physical_device;
     VulkanDeviceDesc m_desc;
+    VulkanQueueFamilyIndices m_queue_family_indices;
 };

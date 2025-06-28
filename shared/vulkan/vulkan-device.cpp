@@ -5,6 +5,28 @@
 #include "types.h"
 #include "vulkan-swap-chain.hpp"
 
+Opal::DynamicArray<u32> VulkanQueueFamilyIndices::GetValidQueueFamilies() const
+{
+    Opal::DynamicArray<u32> valid_queue_families;
+    if (graphics_family != k_invalid_index)
+    {
+        valid_queue_families.PushBack(graphics_family);
+    }
+    if (present_family != k_invalid_index)
+    {
+        valid_queue_families.PushBack(present_family);
+    }
+    if (transfer_family != k_invalid_index)
+    {
+        valid_queue_families.PushBack(transfer_family);
+    }
+    if (compute_family != k_invalid_index)
+    {
+        valid_queue_families.PushBack(compute_family);
+    }
+    return valid_queue_families;
+}
+
 VulkanPhysicalDevice::VulkanPhysicalDevice(VkPhysicalDevice physical_device)
 {
     Init(physical_device);
@@ -131,6 +153,7 @@ bool VulkanPhysicalDevice::Destroy()
     m_physical_device = VK_NULL_HANDLE;
     m_queue_family_properties.Clear();
     m_supported_extensions.Clear();
+    m_queue_family_properties = {};
     return true;
 }
 
@@ -145,11 +168,15 @@ VulkanDevice::~VulkanDevice()
 }
 
 VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
-    : m_device(other.m_device), m_physical_device(Opal::Move(other.m_physical_device)), m_desc(Opal::Move(other.m_desc))
+    : m_device(other.m_device),
+      m_physical_device(Opal::Move(other.m_physical_device)),
+      m_desc(Opal::Move(other.m_desc)),
+      m_queue_family_indices(other.m_queue_family_indices)
 {
     other.m_device = VK_NULL_HANDLE;
     other.m_physical_device = {};
     other.m_desc = {};
+    other.m_queue_family_indices = {};
 }
 
 VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
@@ -159,10 +186,12 @@ VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept
     m_device = other.m_device;
     m_physical_device = Opal::Move(other.m_physical_device);
     m_desc = Opal::Move(other.m_desc);
+    m_queue_family_indices = other.m_queue_family_indices;
 
     other.m_device = VK_NULL_HANDLE;
     other.m_physical_device = {};
     other.m_desc = {};
+    other.m_queue_family_indices = {};
 
     return *this;
 }
@@ -172,6 +201,7 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
     RNDR_RETURN_ON_FAIL(physical_device.IsValid(), false, "Physical device is invalid!", RNDR_NOOP);
 
     constexpr f32 k_queue_priority = 1.0f;
+    VulkanQueueFamilyIndices queue_family_indices;
     Opal::DynamicArray<VkDeviceQueueCreateInfo> queue_create_infos;
     auto queue_family_index = physical_device.GetQueueFamilyIndex(VK_QUEUE_GRAPHICS_BIT);
     if (((desc.queue_flags & VK_QUEUE_GRAPHICS_BIT) != 0u) && queue_family_index.HasValue())
@@ -182,6 +212,7 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
         queue_create_info.queueCount = 1;
         queue_create_info.pQueuePriorities = &k_queue_priority;
         queue_create_infos.PushBack(queue_create_info);
+        queue_family_indices.graphics_family = queue_family_index.GetValue();
     }
 
     if (desc.surface.IsValid())
@@ -189,6 +220,7 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
         auto details = desc.surface->GetSwapChainSupportDetails(physical_device);
         auto present_queue_family_index = physical_device.GetPresentQueueFamilyIndex(desc.surface);
         RNDR_RETURN_ON_FAIL(present_queue_family_index.HasValue(), false, "Present queue family index is invalid!", RNDR_NOOP);
+        queue_family_indices.present_family = present_queue_family_index.GetValue();
         if (present_queue_family_index.GetValue() != queue_family_index.GetValue())
         {
             VkDeviceQueueCreateInfo queue_create_info{};
@@ -201,7 +233,7 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
     }
 
     Opal::DynamicArray device_extensions(desc.extensions);
-    if (desc.use_swap_chain)
+    if (desc.surface.IsValid())
     {
         device_extensions.PushBack(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     }
@@ -223,6 +255,7 @@ bool VulkanDevice::Init(VulkanPhysicalDevice physical_device, const VulkanDevice
 
     m_physical_device = Opal::Move(physical_device);
     m_desc = desc;
+    m_queue_family_indices = queue_family_indices;
     return true;
 }
 
