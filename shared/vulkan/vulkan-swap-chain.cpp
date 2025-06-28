@@ -65,7 +65,7 @@ bool VulkanSurface::Destroy()
     return true;
 }
 
-const VulkanSwapChainSupportDetails& VulkanSurface::GetSwapChainSupportDetails(const class VulkanPhysicalDevice& device) const
+VulkanSwapChainSupportDetails VulkanSurface::GetSwapChainSupportDetails(const class VulkanPhysicalDevice& device) const
 {
     VulkanSwapChainSupportDetails details;
 
@@ -84,7 +84,7 @@ const VulkanSwapChainSupportDetails& VulkanSurface::GetSwapChainSupportDetails(c
     if (present_mode_count != 0)
     {
         details.present_modes.Resize(present_mode_count);
-        VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(device.GetNativePhysicalDevice(), m_surface, &present_mode_count,
+        const VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(device.GetNativePhysicalDevice(), m_surface, &present_mode_count,
                                                                     details.present_modes.GetData());
         RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, {}, "Failed to get present modes!", RNDR_NOOP);
     }

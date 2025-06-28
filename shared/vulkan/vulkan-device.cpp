@@ -101,10 +101,9 @@ Opal::Expected<u32, VkResult> VulkanPhysicalDevice::GetPresentQueueFamilyIndex(c
 {
     for (u32 i = 0; i < m_queue_family_properties.GetSize(); i++)
     {
-        const VkQueueFamilyProperties& props = m_queue_family_properties[i];
         VkBool32 present_support = 0;
         vkGetPhysicalDeviceSurfaceSupportKHR(m_physical_device, i, surface.GetNativeSurface(), &present_support);
-        if (present_support)
+        if (present_support == VK_TRUE)
         {
             return Opal::Expected<u32, VkResult>(i);
         }

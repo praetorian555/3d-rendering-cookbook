@@ -29,7 +29,7 @@ public:
 
     [[nodiscard]] bool IsValid() const { return m_surface != VK_NULL_HANDLE; }
     [[nodiscard]] VkSurfaceKHR GetNativeSurface() const { return m_surface; }
-    [[nodiscard]] const VulkanSwapChainSupportDetails& GetSwapChainSupportDetails(const class VulkanPhysicalDevice& device) const;
+    [[nodiscard]] VulkanSwapChainSupportDetails GetSwapChainSupportDetails(const class VulkanPhysicalDevice& device) const;
 
 private:
     VkSurfaceKHR m_surface = VK_NULL_HANDLE;

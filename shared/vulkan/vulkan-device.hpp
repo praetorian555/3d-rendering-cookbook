@@ -74,7 +74,6 @@ public:
     [[nodiscard]] const VulkanPhysicalDevice& GetPhysicalDevice() const { return m_physical_device; }
     [[nodiscard]] VkPhysicalDevice GetNativePhysicalDevice() const { return m_physical_device.GetNativePhysicalDevice(); }
     [[nodiscard]] const VulkanDeviceDesc& GetDesc() const { return m_desc; }
-    [[nodiscard]] VulkanSwapChainSupportDetails GetSwapChainSupportDetails(const VulkanSurface& surface) const;
 
 private:
     VkDevice m_device = VK_NULL_HANDLE;
