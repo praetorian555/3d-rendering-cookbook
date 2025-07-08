@@ -347,3 +347,70 @@ bool VulkanDevice::DestroyCommandBuffers(const Opal::DynamicArray<VkCommandBuffe
     vkFreeCommandBuffers(m_device, it->second, static_cast<u32>(command_buffers.GetSize()), command_buffers.GetData());
     return true;
 }
+
+VkDescriptorPool VulkanDevice::CreateDescriptorPool(const VulkanDescriptorPoolDesc& desc) const
+{
+    VkDescriptorPoolCreateInfo pool_info{};
+    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    pool_info.poolSizeCount = desc.pool_sizes.GetSize();
+    pool_info.pPoolSizes = desc.pool_sizes.GetData();
+    pool_info.maxSets = desc.max_sets;
+    pool_info.flags = desc.flags;
+
+    VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    const VkResult result = vkCreateDescriptorPool(m_device, &pool_info, nullptr, &descriptor_pool);
+    RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, VK_NULL_HANDLE, "Failed to create descriptor pool!", RNDR_NOOP);
+    return descriptor_pool;
+}
+
+bool VulkanDevice::DestroyDescriptorPool(VkDescriptorPool descriptor_pool) const
+{
+    vkDestroyDescriptorPool(m_device, descriptor_pool, nullptr);
+    return true;
+}
+
+VkDescriptorSetLayout VulkanDevice::CreateDescriptorSetLayout(const VulkanDescriptorSetLayoutDesc& desc) const
+{
+    Opal::DynamicArray<VkDescriptorSetLayoutBinding> bindings(desc.bindings.GetSize());
+    for (i32 i = 0; i < bindings.GetSize(); i++)
+    {
+        VkDescriptorSetLayoutBinding& binding = bindings[i];
+        binding.binding = desc.bindings[i].binding;
+        binding.descriptorType = desc.bindings[i].descriptor_type;
+        binding.descriptorCount = desc.bindings[i].descriptor_count;
+        binding.stageFlags = desc.bindings[i].stage_flags;
+        binding.pImmutableSamplers = desc.bindings[i].sampler;
+    }
+
+    VkDescriptorSetLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layout_info.bindingCount = bindings.GetSize();
+    layout_info.pBindings = bindings.GetData();
+
+    VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
+    const VkResult result = vkCreateDescriptorSetLayout(m_device, &layout_info, nullptr, &descriptor_set_layout);
+    RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, VK_NULL_HANDLE, "Failed to create descriptor set layout!", RNDR_NOOP);
+    return descriptor_set_layout;
+}
+
+bool VulkanDevice::DestroyDescriptorSetLayout(VkDescriptorSetLayout descriptor_set_layout) const
+{
+    vkDestroyDescriptorSetLayout(m_device, descriptor_set_layout, nullptr);
+    return true;
+}
+
+Opal::DynamicArray<VkDescriptorSet> VulkanDevice::AllocateDescriptorSets(const VkDescriptorPool& descriptor_pool, u32 count,
+                                                                         const VkDescriptorSetLayout& layout) const
+{
+    Opal::DynamicArray<VkDescriptorSetLayout> layouts(count, layout);
+    VkDescriptorSetAllocateInfo alloc_info{};
+    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    alloc_info.descriptorPool = descriptor_pool;
+    alloc_info.descriptorSetCount = count;
+    alloc_info.pSetLayouts = layouts.GetData();
+
+    Opal::DynamicArray<VkDescriptorSet> descriptor_sets(count);
+    const VkResult result = vkAllocateDescriptorSets(m_device, &alloc_info, descriptor_sets.GetData());
+    RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, Opal::DynamicArray<VkDescriptorSet>(), "Failed to allocate descriptor sets!", descriptor_sets.Clear());
+    return descriptor_sets;
+}

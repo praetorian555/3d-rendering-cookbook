@@ -29,6 +29,28 @@ struct VulkanQueueFamilyIndices
     [[nodiscard]] Opal::DynamicArray<u32> GetValidQueueFamilies() const;
 };
 
+struct VulkanDescriptorPoolDesc
+{
+    u32 max_sets = 0;
+    Opal::DynamicArray<VkDescriptorPoolSize> pool_sizes;
+    VkDescriptorPoolCreateFlags flags = 0;
+};
+
+struct VulkanDescriptorSetLayoutBinding
+{
+    u32 binding = 0;
+    VkDescriptorType descriptor_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    u32 descriptor_count = 1;
+    VkShaderStageFlags stage_flags = VK_SHADER_STAGE_VERTEX_BIT;
+    const VkSampler* sampler = nullptr;
+};
+
+struct VulkanDescriptorSetLayoutDesc
+{
+    Opal::DynamicArray<VulkanDescriptorSetLayoutBinding> bindings;
+    VkDescriptorSetLayoutCreateFlags flags = 0;
+};
+
 class VulkanPhysicalDevice
 {
 public:
@@ -87,11 +109,20 @@ public:
     [[nodiscard]] const VulkanDeviceDesc& GetDesc() const { return m_desc; }
     [[nodiscard]] const VulkanQueueFamilyIndices& GetQueueFamilyIndices() const { return m_queue_family_indices; }
 
-    VkCommandBuffer CreateCommandBuffer(u32 queue_family_index) const;
-    Opal::DynamicArray<VkCommandBuffer> CreateCommandBuffers(u32 queue_family_index, u32 count) const;
+    [[nodiscard]] VkCommandBuffer CreateCommandBuffer(u32 queue_family_index) const;
+    [[nodiscard]] Opal::DynamicArray<VkCommandBuffer> CreateCommandBuffers(u32 queue_family_index, u32 count) const;
 
     bool DestroyCommandBuffer(VkCommandBuffer command_buffer, u32 queue_family_index) const;
     bool DestroyCommandBuffers(const Opal::DynamicArray<VkCommandBuffer>& command_buffers, u32 queue_family_index) const;
+
+    [[nodiscard]] VkDescriptorPool CreateDescriptorPool(const VulkanDescriptorPoolDesc& desc = {}) const;
+    bool DestroyDescriptorPool(VkDescriptorPool descriptor_pool) const;
+
+    [[nodiscard]] VkDescriptorSetLayout CreateDescriptorSetLayout(const VulkanDescriptorSetLayoutDesc& desc) const;
+    bool DestroyDescriptorSetLayout(VkDescriptorSetLayout descriptor_set_layout) const;
+
+    [[nodiscard]] Opal::DynamicArray<VkDescriptorSet> AllocateDescriptorSets(const VkDescriptorPool& descriptor_pool, u32 count,
+                                                                             const VkDescriptorSetLayout& layout) const;
 
 private:
     VkDevice m_device = VK_NULL_HANDLE;

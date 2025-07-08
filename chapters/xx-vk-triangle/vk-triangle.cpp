@@ -772,22 +772,6 @@ void VulkanRenderer::CreateIndexBuffer()
     vkFreeMemory(m_device.GetNativeDevice(), staging_buffer_memory, nullptr);
 }
 
-void VulkanRenderer::CreateDescriptorSetLayout()
-{
-    VkDescriptorSetLayoutBinding ubo_layout_binding{};
-    ubo_layout_binding.binding = 0;
-    ubo_layout_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    ubo_layout_binding.descriptorCount = 1;
-    ubo_layout_binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    VkDescriptorSetLayoutCreateInfo layout_info{};
-    layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = 1;
-    layout_info.pBindings = &ubo_layout_binding;
-
-    VK_CHECK(vkCreateDescriptorSetLayout(m_device.GetNativeDevice(), &layout_info, nullptr, &m_descriptor_set_layout));
-}
-
 void VulkanRenderer::CreateUniformBuffers()
 {
     const VkDeviceSize buffer_size = sizeof(UniformBufferObject);
@@ -826,17 +810,10 @@ void VulkanRenderer::UpdateUniformBuffer(u32 current_frame)
 
 void VulkanRenderer::CreateDescriptorPool()
 {
-    VkDescriptorPoolSize pool_size{};
-    pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    pool_size.descriptorCount = k_max_frames_in_flight;
-
-    VkDescriptorPoolCreateInfo pool_info{};
-    pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.poolSizeCount = 1;
-    pool_info.pPoolSizes = &pool_size;
-    pool_info.maxSets = k_max_frames_in_flight;
-
-    VK_CHECK(vkCreateDescriptorPool(m_device.GetNativeDevice(), &pool_info, nullptr, &m_descriptor_pool));
+    m_descriptor_pool = m_device.CreateDescriptorPool(
+        {.max_sets = k_max_frames_in_flight,
+         .pool_sizes = {{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = k_max_frames_in_flight}}});
+    RNDR_ASSERT(m_descriptor_pool != VK_NULL_HANDLE, "Failed to create descriptor pool!");
 }
 
 void VulkanRenderer::CreateDescriptorSets()
@@ -869,4 +846,14 @@ void VulkanRenderer::CreateDescriptorSets()
 
         vkUpdateDescriptorSets(m_device.GetNativeDevice(), 1, &descriptor_write, 0, nullptr);
     }
+}
+
+void VulkanRenderer::CreateDescriptorSetLayout()
+{
+    const VulkanDescriptorSetLayoutDesc desc{.bindings = {{.binding = 0,
+                                                     .descriptor_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                                     .descriptor_count = 1,
+                                                     .stage_flags = VK_SHADER_STAGE_VERTEX_BIT}}};
+    m_descriptor_set_layout = m_device.CreateDescriptorSetLayout(desc);
+    RNDR_ASSERT(m_descriptor_set_layout != VK_NULL_HANDLE, "Failed to create descriptor set layout!");
 }
