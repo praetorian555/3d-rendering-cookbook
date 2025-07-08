@@ -25,6 +25,7 @@
 
 #include "types.h"
 #include "vulkan/vulkan-graphics-context.hpp"
+#include "vulkan/vulkan-resources.hpp"
 #include "vulkan/vulkan-swap-chain.hpp"
 
 static constexpr i32 k_max_frames_in_flight = 2;
@@ -162,16 +163,13 @@ private:
     VkPipelineLayout m_pipeline_layout = VK_NULL_HANDLE;
     VkPipeline m_graphics_pipeline = VK_NULL_HANDLE;
     Opal::DynamicArray<VkFramebuffer> m_swap_chain_frame_buffers;
-    VkBuffer m_vertex_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory m_vertex_buffer_memory = VK_NULL_HANDLE;
-    VkBuffer m_index_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory m_index_buffer_memory = VK_NULL_HANDLE;
+    VulkanBuffer m_vertex_buffer;
+    VulkanBuffer m_index_buffer;
     Opal::DynamicArray<VkCommandBuffer> m_command_buffers;
     Opal::DynamicArray<VkSemaphore> m_image_available_semaphores;
     Opal::DynamicArray<VkSemaphore> m_render_finished_semaphores;
     Opal::DynamicArray<VkFence> m_in_flight_fences;
-    Opal::DynamicArray<VkBuffer> m_uniform_buffers;
-    Opal::DynamicArray<VkDeviceMemory> m_uniform_buffers_memory;
+    Opal::DynamicArray<VulkanBuffer> m_uniform_buffers;
     Opal::DynamicArray<void*> m_mapped_uniform_buffers;
     VkDescriptorPool m_descriptor_pool = VK_NULL_HANDLE;
     Opal::DynamicArray<VkDescriptorSet> m_descriptor_sets;
@@ -217,19 +215,24 @@ void Run(Rndr::Application* app)
 VulkanRenderer::VulkanRenderer(VulkanRendererDesc desc) : m_desc(Opal::Move(desc))
 {
     m_graphics_context.Init();
+
     m_surface.Init(m_graphics_context, m_desc.window->GetNativeHandle());
+
     auto physical_devices = m_graphics_context.EnumeratePhysicalDevices();
     RNDR_ASSERT(physical_devices.GetSize() > 0, "No physical devices found!");
     VulkanDeviceDesc device_desc;
     device_desc.surface = m_surface;
     m_device.Init(Opal::Move(physical_devices[0]), device_desc);
+
     m_queue_family_indices = m_device.GetQueueFamilyIndices();
     CreateQueues();
+
     auto window_size = m_desc.window->GetSize();
     RNDR_ASSERT(window_size.HasValue(), "Failed to get window size!");
     const u32 width = static_cast<u32>(window_size.GetValue().x);
     const u32 height = static_cast<u32>(window_size.GetValue().y);
     m_swap_chain.Init(m_device, m_surface, {.width = width, .height = height});
+
     CreateRenderPass();
     CreateDescriptorSetLayout();
     CreateGraphicsPipeline();
@@ -252,18 +255,15 @@ VulkanRenderer::~VulkanRenderer()
         vkDestroySemaphore(m_device.GetNativeDevice(), m_image_available_semaphores[i], nullptr);
         vkDestroyFence(m_device.GetNativeDevice(), m_in_flight_fences[i], nullptr);
     }
-    vkDestroyBuffer(m_device.GetNativeDevice(), m_index_buffer, nullptr);
-    vkFreeMemory(m_device.GetNativeDevice(), m_index_buffer_memory, nullptr);
-    vkDestroyBuffer(m_device.GetNativeDevice(), m_vertex_buffer, nullptr);
-    vkFreeMemory(m_device.GetNativeDevice(), m_vertex_buffer_memory, nullptr);
+    m_index_buffer.Destroy();
+    m_vertex_buffer.Destroy();
     for (const VkFramebuffer& frame_buffer : m_swap_chain_frame_buffers)
     {
         vkDestroyFramebuffer(m_device.GetNativeDevice(), frame_buffer, nullptr);
     }
     for (i32 i = 0; i < k_max_frames_in_flight; ++i)
     {
-        vkDestroyBuffer(m_device.GetNativeDevice(), m_uniform_buffers[i], nullptr);
-        vkFreeMemory(m_device.GetNativeDevice(), m_uniform_buffers_memory[i], nullptr);
+        m_uniform_buffers[i].Destroy();
     }
     vkDestroyDescriptorPool(m_device.GetNativeDevice(), m_descriptor_pool, nullptr);
     vkDestroyDescriptorSetLayout(m_device.GetNativeDevice(), m_descriptor_set_layout, nullptr);
@@ -520,11 +520,11 @@ void VulkanRenderer::RecordCommandBuffer(VkCommandBuffer command_buffer, u32 ima
     vkCmdSetViewport(command_buffer, 0, 1, &m_viewport);
     vkCmdSetScissor(command_buffer, 0, 1, &m_scissor);
 
-    VkBuffer vertex_buffers[] = {m_vertex_buffer};
+    VkBuffer vertex_buffers[] = {m_vertex_buffer.GetNativeBuffer()};
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(command_buffer, 0, 1, vertex_buffers, offsets);
 
-    vkCmdBindIndexBuffer(command_buffer, m_index_buffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdBindIndexBuffer(command_buffer, m_index_buffer.GetNativeBuffer(), 0, VK_INDEX_TYPE_UINT16);
 
     vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline_layout, 0, 1,
                             &m_descriptor_sets[m_current_frame_in_flight], 0, nullptr);
@@ -656,40 +656,50 @@ void VulkanRenderer::OnResize()
 void VulkanRenderer::CreateVertexBuffer()
 {
     const VkDeviceSize buffer_size = sizeof(g_vertices[0]) * g_vertices.GetSize();
+    VulkanBuffer staging_buffer(m_device, {.size = buffer_size,
+                                           .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                           .memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                           .initial_data = Opal::AsWritableBytes(g_vertices)});
 
-    VkBuffer staging_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory staging_buffer_memory = VK_NULL_HANDLE;
-    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 staging_buffer, staging_buffer_memory);
+    m_vertex_buffer.Init(m_device, {.size = buffer_size,
+                                    .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                                    .memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT});
+    CopyBuffer(staging_buffer.GetNativeBuffer(), m_vertex_buffer.GetNativeBuffer(), buffer_size);
 
-    void* data = nullptr;
-    VK_CHECK(vkMapMemory(m_device.GetNativeDevice(), staging_buffer_memory, 0, buffer_size, 0, &data));
-    memcpy(data, g_vertices.GetData(), buffer_size);
-    vkUnmapMemory(m_device.GetNativeDevice(), staging_buffer_memory);
-
-    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                 m_vertex_buffer, m_vertex_buffer_memory);
-
-    CopyBuffer(staging_buffer, m_vertex_buffer, buffer_size);
-
-    vkDestroyBuffer(m_device.GetNativeDevice(), staging_buffer, nullptr);
-    vkFreeMemory(m_device.GetNativeDevice(), staging_buffer_memory, nullptr);
+    staging_buffer.Destroy();
 }
 
-u32 VulkanRenderer::FindMemoryType(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties)
+void VulkanRenderer::CreateIndexBuffer()
 {
-    VkPhysicalDeviceMemoryProperties memory_properties;
-    vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
+    const VkDeviceSize buffer_size = sizeof(g_indices[0]) * g_indices.GetSize();
+    VulkanBuffer staging_buffer(m_device, {.size = buffer_size,
+                                           .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                           .memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                           .initial_data = Opal::AsWritableBytes(g_indices)});
 
-    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i)
+    m_index_buffer.Init(m_device, {.size = buffer_size,
+                                   .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                                   .memory_properties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT});
+
+    CopyBuffer(staging_buffer.GetNativeBuffer(), m_index_buffer.GetNativeBuffer(), buffer_size);
+
+    staging_buffer.Destroy();
+}
+
+void VulkanRenderer::CreateUniformBuffers()
+{
+    const VkDeviceSize buffer_size = sizeof(UniformBufferObject);
+    m_mapped_uniform_buffers.Resize(k_max_frames_in_flight);
+    for (u32 i = 0; i < k_max_frames_in_flight; ++i)
     {
-        if ((type_filter & (1 << i)) != 0 && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties)
-        {
-            return i;
-        }
+        VulkanBuffer buffer(m_device,
+                                  {.size = buffer_size,
+                                   .usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                   .memory_properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT});
+        m_uniform_buffers.PushBack(Opal::Move(buffer));
+        VK_CHECK(vkMapMemory(m_device.GetNativeDevice(), m_uniform_buffers[i].GetNativeMemory(), 0, buffer_size, 0,
+                             &m_mapped_uniform_buffers[i]));
     }
-
-    return 0;
 }
 
 void VulkanRenderer::CreateQueues()
@@ -698,26 +708,6 @@ void VulkanRenderer::CreateQueues()
     RNDR_ASSERT(index.HasValue(), "No graphics queue!");
     vkGetDeviceQueue(m_device.GetNativeDevice(), index.GetValue(), 0, &m_graphics_queue);
     vkGetDeviceQueue(m_device.GetNativeDevice(), index.GetValue(), 0, &m_present_queue);
-}
-
-void VulkanRenderer::CreateBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& out_buffer,
-                                  VkDeviceMemory& out_buffer_memory)
-{
-    VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    buffer_info.size = size;
-    buffer_info.usage = usage;
-    buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    VK_CHECK(vkCreateBuffer(m_device.GetNativeDevice(), &buffer_info, nullptr, &out_buffer));
-
-    VkMemoryRequirements memory_requirements;
-    vkGetBufferMemoryRequirements(m_device.GetNativeDevice(), out_buffer, &memory_requirements);
-
-    VkMemoryAllocateInfo alloc_info{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-    alloc_info.allocationSize = memory_requirements.size;
-    alloc_info.memoryTypeIndex = FindMemoryType(m_device.GetNativePhysicalDevice(), memory_requirements.memoryTypeBits, properties);
-
-    VK_CHECK(vkAllocateMemory(m_device.GetNativeDevice(), &alloc_info, nullptr, &out_buffer_memory));
-    VK_CHECK(vkBindBufferMemory(m_device.GetNativeDevice(), out_buffer, out_buffer_memory, 0));
 }
 
 void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkDeviceSize size)
@@ -747,46 +737,6 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
     vkQueueWaitIdle(m_graphics_queue);
 
     m_device.DestroyCommandBuffer(command_buffer, indices.graphics_family);
-}
-
-void VulkanRenderer::CreateIndexBuffer()
-{
-    const VkDeviceSize buffer_size = sizeof(g_indices[0]) * g_indices.GetSize();
-
-    VkBuffer staging_buffer = VK_NULL_HANDLE;
-    VkDeviceMemory staging_buffer_memory = VK_NULL_HANDLE;
-    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 staging_buffer, staging_buffer_memory);
-
-    void* data = nullptr;
-    VK_CHECK(vkMapMemory(m_device.GetNativeDevice(), staging_buffer_memory, 0, buffer_size, 0, &data));
-    memcpy(data, g_indices.GetData(), buffer_size);
-    vkUnmapMemory(m_device.GetNativeDevice(), staging_buffer_memory);
-
-    CreateBuffer(buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                 m_index_buffer, m_index_buffer_memory);
-
-    CopyBuffer(staging_buffer, m_index_buffer, buffer_size);
-
-    vkDestroyBuffer(m_device.GetNativeDevice(), staging_buffer, nullptr);
-    vkFreeMemory(m_device.GetNativeDevice(), staging_buffer_memory, nullptr);
-}
-
-void VulkanRenderer::CreateUniformBuffers()
-{
-    const VkDeviceSize buffer_size = sizeof(UniformBufferObject);
-
-    m_uniform_buffers.Resize(k_max_frames_in_flight);
-    m_uniform_buffers_memory.Resize(k_max_frames_in_flight);
-    m_mapped_uniform_buffers.Resize(k_max_frames_in_flight);
-
-    for (u32 i = 0; i < k_max_frames_in_flight; ++i)
-    {
-        CreateBuffer(buffer_size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, m_uniform_buffers[i],
-                     m_uniform_buffers_memory[i]);
-        VK_CHECK(vkMapMemory(m_device.GetNativeDevice(), m_uniform_buffers_memory[i], 0, buffer_size, 0, &m_mapped_uniform_buffers[i]));
-    }
 }
 
 void VulkanRenderer::UpdateUniformBuffer(u32 current_frame)
@@ -831,7 +781,7 @@ void VulkanRenderer::CreateDescriptorSets()
     for (i32 i = 0; i < k_max_frames_in_flight; i++)
     {
         VkDescriptorBufferInfo buffer_info{};
-        buffer_info.buffer = m_uniform_buffers[i];
+        buffer_info.buffer = m_uniform_buffers[i].GetNativeBuffer();
         buffer_info.offset = 0;
         buffer_info.range = sizeof(UniformBufferObject);
 
@@ -851,9 +801,9 @@ void VulkanRenderer::CreateDescriptorSets()
 void VulkanRenderer::CreateDescriptorSetLayout()
 {
     const VulkanDescriptorSetLayoutDesc desc{.bindings = {{.binding = 0,
-                                                     .descriptor_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                                                     .descriptor_count = 1,
-                                                     .stage_flags = VK_SHADER_STAGE_VERTEX_BIT}}};
+                                                           .descriptor_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                                                           .descriptor_count = 1,
+                                                           .stage_flags = VK_SHADER_STAGE_VERTEX_BIT}}};
     m_descriptor_set_layout = m_device.CreateDescriptorSetLayout(desc);
     RNDR_ASSERT(m_descriptor_set_layout != VK_NULL_HANDLE, "Failed to create descriptor set layout!");
 }

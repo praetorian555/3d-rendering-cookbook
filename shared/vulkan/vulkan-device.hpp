@@ -79,6 +79,8 @@ public:
 
     [[nodiscard]] bool IsExtensionSupported(const char* extension_name) const;
 
+    [[nodiscard]] u32 FindMemoryTypeIndex(u32 type_filter, VkMemoryPropertyFlags properties) const;
+
 private:
     VkPhysicalDevice m_physical_device = VK_NULL_HANDLE;
     VkPhysicalDeviceProperties m_properties = {};

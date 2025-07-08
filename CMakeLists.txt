@@ -128,7 +128,9 @@ set(SHARED_FILES
         shared/vulkan/vulkan-device.hpp
         shared/vulkan/vulkan-device.cpp
         shared/vulkan/vulkan-swap-chain.hpp
-        shared/vulkan/vulkan-swap-chain.cpp)
+        shared/vulkan/vulkan-swap-chain.cpp
+        shared/vulkan/vulkan-resources.hpp
+        shared/vulkan/vulkan-resources.cpp)
 add_library(shared STATIC ${SHARED_FILES})
 target_link_libraries(shared PRIVATE rencook_options rencook_warnings)
 target_link_libraries(shared PUBLIC rndr imgui etc2comp assimp meshoptimizer gli $ENV{VK_SDK_PATH}/Lib/vulkan-1.lib)

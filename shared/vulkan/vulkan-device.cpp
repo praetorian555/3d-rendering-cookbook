@@ -148,6 +148,24 @@ bool VulkanPhysicalDevice::IsExtensionSupported(const char* extension_name) cons
     return true;
 }
 
+u32 VulkanPhysicalDevice::FindMemoryTypeIndex(u32 type_filter, VkMemoryPropertyFlags properties) const
+{
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    vkGetPhysicalDeviceMemoryProperties(m_physical_device, &memory_properties);
+
+    for (u32 i = 0; i < memory_properties.memoryTypeCount; ++i)
+    {
+        // Properties here specify if the memory is device local, host visible, etc.
+        // Device has an array of memory types, and each bit in the filter corresponds to one memory type in that array.
+        if ((type_filter & (1 << i)) != 0 && (memory_properties.memoryTypes[i].propertyFlags & properties) == properties)
+        {
+            return i;
+        }
+    }
+    // Just use first memory type available
+    return 0;
+}
+
 bool VulkanPhysicalDevice::Destroy()
 {
     m_physical_device = VK_NULL_HANDLE;
@@ -352,7 +370,7 @@ VkDescriptorPool VulkanDevice::CreateDescriptorPool(const VulkanDescriptorPoolDe
 {
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.poolSizeCount = desc.pool_sizes.GetSize();
+    pool_info.poolSizeCount = static_cast<u32>(desc.pool_sizes.GetSize());
     pool_info.pPoolSizes = desc.pool_sizes.GetData();
     pool_info.maxSets = desc.max_sets;
     pool_info.flags = desc.flags;
@@ -384,7 +402,7 @@ VkDescriptorSetLayout VulkanDevice::CreateDescriptorSetLayout(const VulkanDescri
 
     VkDescriptorSetLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layout_info.bindingCount = bindings.GetSize();
+    layout_info.bindingCount = static_cast<u32>(bindings.GetSize());
     layout_info.pBindings = bindings.GetData();
 
     VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
