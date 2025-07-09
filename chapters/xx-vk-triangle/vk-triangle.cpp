@@ -539,6 +539,7 @@ void VulkanRenderer::Draw()
 {
     // Wait for the previous frame to finish
     vkWaitForFences(m_device.GetNativeDevice(), 1, &m_in_flight_fences[m_current_frame_in_flight], VK_TRUE, UINT64_MAX);
+    vkResetFences(m_device.GetNativeDevice(), 1, &m_in_flight_fences[m_current_frame_in_flight]);
 
     // Acquire an image from the swap chain
     u32 image_index = 0;
@@ -550,8 +551,6 @@ void VulkanRenderer::Draw()
         return;
     }
     RNDR_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "Failed to acquire next image from the swap chain!");
-
-    vkResetFences(m_device.GetNativeDevice(), 1, &m_in_flight_fences[m_current_frame_in_flight]);
 
     // Record the command buffer
     vkResetCommandBuffer(m_command_buffers[m_current_frame_in_flight], 0);
@@ -741,7 +740,7 @@ void VulkanRenderer::CopyBuffer(VkBuffer source_buffer, VkBuffer dst_buffer, VkD
 
 void VulkanRenderer::UpdateUniformBuffer(u32 current_frame)
 {
-    static f64 s_start_time = Opal::GetSeconds();
+    static const f64 s_start_time = Opal::GetSeconds();
 
     const f64 current_time = Opal::GetSeconds();
     const f32 delta_time_since_program_start = static_cast<f32>(current_time - s_start_time);
@@ -768,34 +767,21 @@ void VulkanRenderer::CreateDescriptorPool()
 
 void VulkanRenderer::CreateDescriptorSets()
 {
-    Opal::DynamicArray<VkDescriptorSetLayout> layouts(k_max_frames_in_flight, m_descriptor_set_layout);
-    VkDescriptorSetAllocateInfo alloc_info{};
-    alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    alloc_info.descriptorPool = m_descriptor_pool;
-    alloc_info.descriptorSetCount = k_max_frames_in_flight;
-    alloc_info.pSetLayouts = layouts.GetData();
+    m_descriptor_sets = m_device.AllocateDescriptorSets(m_descriptor_pool, k_max_frames_in_flight, m_descriptor_set_layout);
 
-    m_descriptor_sets.Resize(k_max_frames_in_flight);
-    VK_CHECK(vkAllocateDescriptorSets(m_device.GetNativeDevice(), &alloc_info, m_descriptor_sets.GetData()));
-
+    // Fill descriptor sets with our data
+    Opal::DynamicArray<VulkanUpdateDescriptorSet> updates(k_max_frames_in_flight);
     for (i32 i = 0; i < k_max_frames_in_flight; i++)
     {
-        VkDescriptorBufferInfo buffer_info{};
-        buffer_info.buffer = m_uniform_buffers[i].GetNativeBuffer();
-        buffer_info.offset = 0;
-        buffer_info.range = sizeof(UniformBufferObject);
-
-        VkWriteDescriptorSet descriptor_write{};
-        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptor_write.dstSet = m_descriptor_sets[i];
-        descriptor_write.dstBinding = 0;
-        descriptor_write.dstArrayElement = 0;
-        descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptor_write.descriptorCount = 1;
-        descriptor_write.pBufferInfo = &buffer_info;
-
-        vkUpdateDescriptorSets(m_device.GetNativeDevice(), 1, &descriptor_write, 0, nullptr);
+        VulkanUpdateDescriptorSet& update = updates[i];
+        update.buffer_info.buffer = m_uniform_buffers[i].GetNativeBuffer();
+        update.buffer_info.offset = 0;
+        update.buffer_info.range = sizeof(UniformBufferObject);
+        update.descriptor_set = m_descriptor_sets[i];
+        update.binding = 0;
+        update.descriptor_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     }
+    m_device.UpdateDescriptorSets(updates);
 }
 
 void VulkanRenderer::CreateDescriptorSetLayout()

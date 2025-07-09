@@ -51,6 +51,18 @@ struct VulkanDescriptorSetLayoutDesc
     VkDescriptorSetLayoutCreateFlags flags = 0;
 };
 
+struct VulkanUpdateDescriptorSet
+{
+    VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+    u32 binding = 0xFFFFFFFF;
+    VkDescriptorType descriptor_type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    union
+    {
+        VkDescriptorBufferInfo buffer_info;
+        VkDescriptorImageInfo image_info;
+    };
+};
+
 class VulkanPhysicalDevice
 {
 public:
@@ -125,6 +137,8 @@ public:
 
     [[nodiscard]] Opal::DynamicArray<VkDescriptorSet> AllocateDescriptorSets(const VkDescriptorPool& descriptor_pool, u32 count,
                                                                              const VkDescriptorSetLayout& layout) const;
+
+    void UpdateDescriptorSets(const Opal::DynamicArray<VulkanUpdateDescriptorSet>& updates) const;
 
 private:
     VkDevice m_device = VK_NULL_HANDLE;

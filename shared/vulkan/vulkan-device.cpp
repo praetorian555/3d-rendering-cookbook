@@ -429,6 +429,23 @@ Opal::DynamicArray<VkDescriptorSet> VulkanDevice::AllocateDescriptorSets(const V
 
     Opal::DynamicArray<VkDescriptorSet> descriptor_sets(count);
     const VkResult result = vkAllocateDescriptorSets(m_device, &alloc_info, descriptor_sets.GetData());
-    RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, Opal::DynamicArray<VkDescriptorSet>(), "Failed to allocate descriptor sets!", descriptor_sets.Clear());
+    RNDR_RETURN_ON_FAIL(result == VK_SUCCESS, Opal::DynamicArray<VkDescriptorSet>(), "Failed to allocate descriptor sets!",
+                        descriptor_sets.Clear());
     return descriptor_sets;
+}
+
+void VulkanDevice::UpdateDescriptorSets(const Opal::DynamicArray<VulkanUpdateDescriptorSet>& updates) const
+{
+    for (i32 i = 0; i < updates.GetSize(); i++)
+    {
+        VkWriteDescriptorSet descriptor_write{};
+        descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptor_write.dstSet = updates[i].descriptor_set;
+        descriptor_write.dstBinding = updates[i].binding;
+        descriptor_write.dstArrayElement = 0;
+        descriptor_write.descriptorType = updates[i].descriptor_type;
+        descriptor_write.descriptorCount = 1;
+        descriptor_write.pBufferInfo = &updates[i].buffer_info;
+        vkUpdateDescriptorSets(m_device, 1, &descriptor_write, 0, nullptr);
+    }
 }
